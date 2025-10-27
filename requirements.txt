@@ -1,0 +1,5 @@
+# FARVS Project Dependencies
+# Core database connectivity and environment management
+
+pyodbc>=4.0.39
+python-dotenv>=1.0.0
