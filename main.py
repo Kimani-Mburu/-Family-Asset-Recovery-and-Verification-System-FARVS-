@@ -19,6 +19,9 @@ from typing import Optional
 # Import database connection utilities
 from db.db_connect import try_connect
 from config import get_env
+from auth.session import set_current_user, get_current_user
+from db.models_users import UsersModel
+from ui.theme import set_theme
 
 
 class MainWindow:
@@ -43,8 +46,11 @@ class MainWindow:
         self.db_connected = False
         self.db_error: Optional[str] = None
         
+        # Default theme
+        set_theme(self.root, get_env('APP_THEME', 'light'))
         self._setup_ui()
         self._check_database_connection()
+        self._ensure_login()
     
     def _setup_ui(self):
         """Create and layout the main user interface components."""
@@ -119,6 +125,17 @@ class MainWindow:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About FARVS", command=self._show_about)
+
+        # Session menu
+        session_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Session", menu=session_menu)
+        session_menu.add_command(label="Switch User", command=self._ensure_login)
+
+        # Theme menu
+        theme_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Theme", menu=theme_menu)
+        theme_menu.add_command(label="Light", command=lambda: set_theme(self.root, 'light'))
+        theme_menu.add_command(label="Dark", command=lambda: set_theme(self.root, 'dark'))
     
     def _check_database_connection(self):
         """Test database connectivity and update status display."""
@@ -134,6 +151,15 @@ class MainWindow:
             self.db_connected = False
             self.db_error = str(e)
             self.status_label.config(text=f"✗ Connection failed: {self.db_error}", foreground="red")
+
+    def _ensure_login(self):
+        """Prompt for login if no current user is set."""
+        if get_current_user():
+            return
+        LoginDialog(self.root).wait(self.root)
+        user = get_current_user()
+        if not user:
+            messagebox.showwarning("Authentication", "No user logged in. Some actions may be restricted.")
     
     def _open_deceased_module(self):
         """Launch the Deceased Records management module."""
@@ -212,6 +238,71 @@ Developed for Database Systems Group Project
     def run(self):
         """Start the main application event loop."""
         self.root.mainloop()
+
+
+class LoginDialog:
+    """Simple login/create-user dialog using UsersModel and in-memory session."""
+
+    def __init__(self, parent: tk.Tk) -> None:
+        self.parent = parent
+        self.top = tk.Toplevel(parent)
+        self.top.title("Sign in")
+        self.top.grab_set()
+        self.top.geometry("360x220")
+        self.model = UsersModel()
+
+        frame = ttk.Frame(self.top, padding="12")
+        frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+        ttk.Label(frame, text="Username").grid(row=0, column=0, sticky=tk.W, pady=(0,8))
+        self.username_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.username_var, width=28).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=(0,8))
+
+        ttk.Label(frame, text="Password").grid(row=1, column=0, sticky=tk.W)
+        self.password_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.password_var, width=28, show="*").grid(row=1, column=1, sticky=(tk.W, tk.E))
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=2, column=0, columnspan=2, pady=(16,0))
+        ttk.Button(btns, text="Sign in", command=self._signin).grid(row=0, column=0, padx=4)
+        ttk.Button(btns, text="Create user", command=self._create_user).grid(row=0, column=1, padx=4)
+
+        for i in range(2):
+            frame.columnconfigure(i, weight=1)
+
+    def wait(self, parent: tk.Tk) -> None:
+        parent.wait_window(self.top)
+
+    def _signin(self) -> None:
+        username = self.username_var.get().strip()
+        password = self.password_var.get()
+        if not username:
+            messagebox.showerror("Auth", "Username is required")
+            return
+        user = self.model.get_by_username(username)
+        if not user:
+            messagebox.showerror("Auth", "User not found")
+            return
+        # Demo: compare raw password bytes to stored hash (replace with real hashing in production)
+        if user["PasswordHash"] and bytes(password, "utf-8") != bytes(user["PasswordHash"]):
+            messagebox.showerror("Auth", "Invalid password")
+            return
+        set_current_user({"UserId": user["UserId"], "Username": user["Username"], "Role": user["Role"]})
+        self.top.destroy()
+
+    def _create_user(self) -> None:
+        username = self.username_var.get().strip()
+        password = self.password_var.get()
+        if not username:
+            messagebox.showerror("Auth", "Username is required")
+            return
+        try:
+            user_id = self.model.create(username=username, password_hash=bytes(password, "utf-8"), role="Admin")
+            set_current_user({"UserId": user_id, "Username": username, "Role": "Admin"})
+            messagebox.showinfo("Auth", f"User '{username}' created and signed in")
+            self.top.destroy()
+        except Exception as e:
+            messagebox.showerror("Auth", f"Failed to create user: {e}")
 
 
 def main():

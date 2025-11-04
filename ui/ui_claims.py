@@ -18,10 +18,14 @@ from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 import datetime
 
-# Import database models (will be implemented)
-# from db.models_claims import ClaimsModel
-# from db.models_claimants import ClaimantsModel
-# from db.models_assets import AssetsModel
+# Import database models
+from db.models_claims import ClaimsModel
+from db.models_claimants import ClaimantsModel
+from db.models_assets import AssetsModel
+from db.models_cases import CasesModel, TasksModel, StatusHistoryModel
+from db.models_audit import AuditLogModel
+from auth.session import get_current_user
+from ui.theme import stripe_treeview
 
 
 class ClaimsWindow:
@@ -57,10 +61,14 @@ class ClaimsWindow:
         self.claimants: List[Dict[str, Any]] = []
         self.assets: List[Dict[str, Any]] = []
         
-        # Initialize database models (placeholder)
-        # self.claims_model = ClaimsModel()
-        # self.claimants_model = ClaimantsModel()
-        # self.assets_model = AssetsModel()
+        # Initialize database models
+        self.claims_model = ClaimsModel()
+        self.claimants_model = ClaimantsModel()
+        self.assets_model = AssetsModel()
+        self.cases_model = CasesModel()
+        self.tasks_model = TasksModel()
+        self.status_history = StatusHistoryModel()
+        self.audit = AuditLogModel()
         
         self._setup_ui()
         self._load_data()
@@ -354,28 +362,8 @@ class ClaimsWindow:
     def _load_claimants(self):
         """Load claimants for the dropdown and list."""
         try:
-            # TODO: Replace with actual database call
-            # self.claimants = self.claimants_model.get_all()
-            
-            # Placeholder data
-            self.claimants = [
-                {
-                    "ClaimantId": 1,
-                    "NationalId": "111222333",
-                    "FirstName": "Mary",
-                    "LastName": "Doe",
-                    "Relationship": "Spouse",
-                    "Contact": "mary.doe@email.com"
-                },
-                {
-                    "ClaimantId": 2,
-                    "NationalId": "444555666",
-                    "FirstName": "Robert",
-                    "LastName": "Smith",
-                    "Relationship": "Child",
-                    "Contact": "robert.smith@email.com"
-                }
-            ]
+            # Load from DB
+            self.claimants = self.claimants_model.get_all()
             
             # Update combobox
             claimant_names = [f"{c['FirstName']} {c['LastName']}" for c in self.claimants]
@@ -390,26 +378,8 @@ class ClaimsWindow:
     def _load_assets(self):
         """Load assets for the dropdown."""
         try:
-            # TODO: Replace with actual database call
-            # self.assets = self.assets_model.get_all_with_details()
-            
-            # Placeholder data
-            self.assets = [
-                {
-                    "AssetId": 1,
-                    "AssetType": "Bank Account",
-                    "Identifier": "ACC-123456",
-                    "DeceasedName": "John Doe",
-                    "InstitutionName": "National Bank"
-                },
-                {
-                    "AssetId": 2,
-                    "AssetType": "Insurance Policy",
-                    "Identifier": "POL-789012",
-                    "DeceasedName": "Jane Smith",
-                    "InstitutionName": "State Insurance"
-                }
-            ]
+            # Load from DB
+            self.assets = self.assets_model.get_all_with_details()
             
             # Update combobox
             asset_names = [f"{a['AssetType']} - {a['Identifier']} ({a['DeceasedName']})" for a in self.assets]
@@ -425,33 +395,8 @@ class ClaimsWindow:
             for item in self.claims_tree.get_children():
                 self.claims_tree.delete(item)
             
-            # TODO: Replace with actual database call
-            # self.claims = self.claims_model.get_all_with_details()
-            
-            # Placeholder data
-            self.claims = [
-                {
-                    "ClaimId": 1,
-                    "AssetId": 1,
-                    "ClaimantId": 1,
-                    "Status": "Pending",
-                    "FiledAt": "2024-01-15",
-                    "Notes": "Initial claim submission",
-                    "AssetName": "Bank Account - ACC-123456 (John Doe)",
-                    "ClaimantName": "Mary Doe"
-                },
-                {
-                    "ClaimId": 2,
-                    "AssetId": 2,
-                    "ClaimantId": 2,
-                    "Status": "Verified",
-                    "FiledAt": "2024-01-10",
-                    "VerifiedAt": "2024-01-20",
-                    "Notes": "Documents verified",
-                    "AssetName": "Insurance Policy - POL-789012 (Jane Smith)",
-                    "ClaimantName": "Robert Smith"
-                }
-            ]
+            # Load from DB
+            self.claims = self.claims_model.get_all_with_details()
             
             # Populate treeview
             self._refresh_claims_treeview()
@@ -482,6 +427,7 @@ class ClaimsWindow:
                 claim["Notes"][:50] + "..." if len(claim["Notes"]) > 50 else claim["Notes"]
             )
             self.claims_tree.insert("", tk.END, values=values)
+        stripe_treeview(self.claims_tree)
     
     def _refresh_claimants_treeview(self):
         """Refresh the claimants treeview with current data."""
@@ -500,6 +446,7 @@ class ClaimsWindow:
                 claimant["Contact"]
             )
             self.claimants_tree.insert("", tk.END, values=values)
+        stripe_treeview(self.claimants_tree)
     
     def _on_claim_select(self, event):
         """Handle claim selection in treeview."""
@@ -685,16 +632,15 @@ class ClaimsWindow:
                 "Notes": self.notes_text.get(1.0, tk.END).strip()
             }
             
-            # TODO: Replace with actual database call
-            # new_id = self.claims_model.create(claim_data)
-            
-            # Placeholder: simulate successful creation
-            new_id = len(self.claims) + 1
-            claim_data["ClaimId"] = new_id
-            claim_data["FiledAt"] = datetime.date.today().strftime("%Y-%m-%d")
-            claim_data["AssetName"] = self.asset_var.get()
-            claim_data["ClaimantName"] = self.claimant_var.get()
-            self.claims.append(claim_data)
+            # DB create
+            new_id = self.claims_model.create(claim_data)
+            # Create a case and initial task
+            user = get_current_user()
+            case_id = self.cases_model.create(title=f"Claim #{new_id}", description=claim_data["Notes"], claim_id=new_id, created_by_user_id=(user["UserId"] if user else None))
+            self.tasks_model.add(case_id=case_id, title="Initial review", status="Pending", assigned_to_user_id=(user["UserId"] if user else None))
+            # Audit and status history
+            self.status_history.add(entity_type="Claim", entity_id=new_id, status=claim_data["Status"], notes="Claim created", changed_by_user_id=(user["UserId"] if user else None))
+            self.audit.write(user_id=(user["UserId"] if user else None), action="CREATE", entity="Claim", entity_id=str(new_id), details=f"Created claim for asset {asset_id} by claimant {claimant_id}", ip=None)
             
             messagebox.showinfo("Success", "Claim added successfully.")
             self._clear_claim_form()
@@ -755,14 +701,11 @@ class ClaimsWindow:
             elif updated_data["Status"] == "Settled" and self.current_claim["Status"] != "Settled":
                 updated_data["SettledAt"] = datetime.date.today().strftime("%Y-%m-%d")
             
-            # TODO: Replace with actual database call
-            # self.claims_model.update(updated_data["ClaimId"], updated_data)
-            
-            # Placeholder: update local data
-            for i, claim in enumerate(self.claims):
-                if claim["ClaimId"] == updated_data["ClaimId"]:
-                    self.claims[i].update(updated_data)
-                    break
+            # DB update
+            self.claims_model.update(updated_data["ClaimId"], updated_data)
+            user = get_current_user()
+            self.status_history.add(entity_type="Claim", entity_id=updated_data["ClaimId"], status=updated_data["Status"], notes="Status updated", changed_by_user_id=(user["UserId"] if user else None))
+            self.audit.write(user_id=(user["UserId"] if user else None), action="UPDATE", entity="Claim", entity_id=str(updated_data["ClaimId"]), details=f"Status -> {updated_data['Status']}", ip=None)
             
             messagebox.showinfo("Success", "Claim status updated successfully.")
             self._load_claims()
@@ -790,14 +733,10 @@ class ClaimsWindow:
                 "Contact": self.contact_var.get().strip() or None
             }
             
-            # TODO: Replace with actual database call
-            # self.claimants_model.update(updated_data["ClaimantId"], updated_data)
-            
-            # Placeholder: update local data
-            for i, claimant in enumerate(self.claimants):
-                if claimant["ClaimantId"] == updated_data["ClaimantId"]:
-                    self.claimants[i] = updated_data
-                    break
+            # DB update
+            self.claimants_model.update(updated_data["ClaimantId"], updated_data)
+            user = get_current_user()
+            self.audit.write(user_id=(user["UserId"] if user else None), action="UPDATE", entity="Claimant", entity_id=str(updated_data["ClaimantId"]), details="Updated claimant", ip=None)
             
             messagebox.showinfo("Success", "Claimant updated successfully.")
             self._load_claimants()
@@ -817,11 +756,11 @@ class ClaimsWindow:
             return
         
         try:
-            # TODO: Replace with actual database call
-            # self.claims_model.delete(self.current_claim["ClaimId"])
-            
-            # Placeholder: remove from local data
-            self.claims = [c for c in self.claims if c["ClaimId"] != self.current_claim["ClaimId"]]
+            # DB delete
+            claim_id = self.current_claim["ClaimId"]
+            self.claims_model.delete(claim_id)
+            user = get_current_user()
+            self.audit.write(user_id=(user["UserId"] if user else None), action="DELETE", entity="Claim", entity_id=str(claim_id), details="Deleted claim", ip=None)
             
             messagebox.showinfo("Success", "Claim deleted successfully.")
             self._clear_claim_form()

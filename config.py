@@ -16,14 +16,28 @@ def build_connection_string() -> str:
     trusted = (get_env("DB_TRUSTED_CONNECTION", "yes") or "").lower()
     username = get_env("DB_USERNAME")
     password = get_env("DB_PASSWORD")
+    encrypt = get_env("DB_ENCRYPT", "yes").lower()
+    trust_cert = get_env("DB_TRUST_SERVER_CERTIFICATE", "yes").lower()
 
+    # Build base connection string
+    conn_parts = [
+        f"DRIVER={{{driver}}}",
+        f"SERVER={server}",
+        f"DATABASE={database}"
+    ]
+    
+    # Add authentication
     if trusted == "yes" or (not username and not password):
-        return (
-            f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
-        )
-
-    return (
-        f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
-    )
+        conn_parts.append("Trusted_Connection=yes")
+    else:
+        conn_parts.extend([f"UID={username}", f"PWD={password}"])
+    
+    # Add encryption settings
+    if encrypt == "yes":
+        conn_parts.append("Encrypt=yes")
+        if trust_cert == "yes":
+            conn_parts.append("TrustServerCertificate=yes")
+    
+    return ";".join(conn_parts) + ";"
 
 

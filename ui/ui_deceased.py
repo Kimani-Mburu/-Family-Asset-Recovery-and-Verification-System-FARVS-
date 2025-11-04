@@ -17,8 +17,11 @@ from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 import datetime
 
-# Import database models (will be implemented)
-# from db.models_deceased import DeceasedModel
+# Import database models
+from db.models_deceased import DeceasedModel
+from db.models_audit import AuditLogModel
+from auth.session import get_current_user
+from ui.theme import stripe_treeview
 
 
 class DeceasedWindow:
@@ -50,8 +53,9 @@ class DeceasedWindow:
         self.current_record: Optional[Dict[str, Any]] = None
         self.records: List[Dict[str, Any]] = []
         
-        # Initialize database model (placeholder)
-        # self.model = DeceasedModel()
+        # Initialize database models
+        self.model = DeceasedModel()
+        self.audit = AuditLogModel()
         
         self._setup_ui()
         self._load_records()
@@ -188,28 +192,8 @@ class DeceasedWindow:
             for item in self.tree.get_children():
                 self.tree.delete(item)
             
-            # TODO: Replace with actual database call
-            # self.records = self.model.get_all()
-            
-            # Placeholder data for demonstration
-            self.records = [
-                {
-                    "DeceasedId": 1,
-                    "NationalId": "123456789",
-                    "FirstName": "John",
-                    "LastName": "Doe",
-                    "DateOfBirth": "1950-01-15",
-                    "DateOfDeath": "2023-12-01"
-                },
-                {
-                    "DeceasedId": 2,
-                    "NationalId": "987654321",
-                    "FirstName": "Jane",
-                    "LastName": "Smith",
-                    "DateOfBirth": "1945-05-20",
-                    "DateOfDeath": "2023-11-15"
-                }
-            ]
+            # Load from database
+            self.records = self.model.get_all()
             
             # Populate treeview
             for record in self.records:
@@ -222,6 +206,8 @@ class DeceasedWindow:
                     record["DateOfDeath"]
                 )
                 self.tree.insert("", tk.END, values=values)
+            # Zebra striping
+            stripe_treeview(self.tree)
                 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load records: {e}")
@@ -273,6 +259,7 @@ class DeceasedWindow:
                     record["DateOfDeath"]
                 )
                 self.tree.insert("", tk.END, values=values)
+        stripe_treeview(self.tree)
     
     def _validate_form(self) -> bool:
         """Validate form input data."""
@@ -319,13 +306,11 @@ class DeceasedWindow:
                 "DateOfDeath": self.dod_var.get().strip() or None
             }
             
-            # TODO: Replace with actual database call
-            # new_id = self.model.create(record_data)
-            
-            # Placeholder: simulate successful creation
-            new_id = len(self.records) + 1
-            record_data["DeceasedId"] = new_id
-            self.records.append(record_data)
+            # DB create
+            new_id = self.model.create(record_data)
+            # Audit
+            user = get_current_user()
+            self.audit.write(user_id=user["UserId"] if user else None, action="CREATE", entity="Deceased", entity_id=str(new_id), details=f"Created deceased {record_data['FirstName']} {record_data['LastName']}", ip=None)
             
             messagebox.showinfo("Success", "Deceased record added successfully.")
             self._clear_form()
@@ -354,14 +339,11 @@ class DeceasedWindow:
                 "DateOfDeath": self.dod_var.get().strip() or None
             }
             
-            # TODO: Replace with actual database call
-            # self.model.update(updated_data["DeceasedId"], updated_data)
-            
-            # Placeholder: update local data
-            for i, record in enumerate(self.records):
-                if record["DeceasedId"] == updated_data["DeceasedId"]:
-                    self.records[i] = updated_data
-                    break
+            # DB update
+            ok = self.model.update(updated_data["DeceasedId"], updated_data)
+            if ok:
+                user = get_current_user()
+                self.audit.write(user_id=user["UserId"] if user else None, action="UPDATE", entity="Deceased", entity_id=str(updated_data["DeceasedId"]), details="Updated deceased record", ip=None)
             
             messagebox.showinfo("Success", "Record updated successfully.")
             self._load_records()
@@ -381,11 +363,11 @@ class DeceasedWindow:
             return
         
         try:
-            # TODO: Replace with actual database call
-            # self.model.delete(self.current_record["DeceasedId"])
-            
-            # Placeholder: remove from local data
-            self.records = [r for r in self.records if r["DeceasedId"] != self.current_record["DeceasedId"]]
+            # DB delete
+            ok = self.model.delete(self.current_record["DeceasedId"])
+            if ok:
+                user = get_current_user()
+                self.audit.write(user_id=user["UserId"] if user else None, action="DELETE", entity="Deceased", entity_id=str(self.current_record["DeceasedId"]), details=f"Deleted {name}", ip=None)
             
             messagebox.showinfo("Success", "Record deleted successfully.")
             self._clear_form()
