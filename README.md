@@ -28,10 +28,13 @@ A comprehensive database system that enables families to trace, verify, and clai
 - **Database-Centric Architecture**: All business logic in stored procedures, triggers, and views
 - **Normalized Database Design**: Third Normal Form (3NF) with proper relationships
 - **Transaction Management**: ACID-compliant transactions with savepoints for partial rollbacks
-- **Advanced Database Components**: 7 stored procedures, 5 triggers, 5 views
-- **Role-Based Access Control**: Admin, Staff, and Viewer roles with proper security
+- **Advanced Database Components**: 22+ stored procedures, 5 triggers, 5 views
+- **Role-Based Access Control**: Admin, Staff, and Viewer roles with database-level authentication
+- **SQL Server Login Integration**: Automatic SQL Server login creation with role-based permissions
+- **Onboarding System**: First-time setup with automatic admin account creation
+- **Asset Normalization**: Type-specific asset detail tables (Bank Account, Vehicle, Real Estate, Investment, Insurance)
 - **Audit Logging**: Comprehensive tracking of all user actions
-- **Modern UI**: Professional blue and white themed interface with card and table views
+- **Modern UI**: Professional blue and white themed interface with scrollable forms and card/table views
 - **Data Validation**: Input validation at both application and database levels
 - **Secure Authentication**: SHA-256 password hashing with salt
 
@@ -74,16 +77,16 @@ A comprehensive database system that enables families to trace, verify, and clai
 
 ### Step 1: Clone the Repository
 
-```bash
+   ```bash
 git clone https://github.com/Kimani-Mburu/-Family-Asset-Recovery-and-Verification-System-FARVS-.git
 cd -Family-Asset-Recovery-and-Verification-System-FARVS-
-```
+   ```
 
 ### Step 2: Install Python Dependencies
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ### Step 3: Set Up the Database
 
@@ -183,9 +186,18 @@ DB_PASSWORD=YourPassword123
 python main.py
 ```
 
+### First-Time Setup (Onboarding)
+
+On first launch, the application will show both "Sign In" and "Create Account" buttons:
+
+1. Click **"Create Account"** to create the first administrator account
+2. The first account automatically receives **Admin** privileges
+3. After creation, you'll be automatically logged in
+4. Subsequent launches will only show "Sign In" - only admins can create new users
+
 ### Default Login Credentials
 
-After seeding the database:
+After seeding the database (if using seed script):
 
 - **Admin User**: `admin` / `admin123`
 - **Staff User**: `staff` / `staff123`
@@ -255,8 +267,8 @@ The database follows **Third Normal Form (3NF)**:
 
 | Component | Count | Purpose |
 |-----------|-------|---------|
-| **Tables** | 12 | Core data storage (normalized) |
-| **Stored Procedures** | 7 | Business logic, validation, transactions |
+| **Tables** | 17 | Core data storage (normalized 3NF with asset detail tables) |
+| **Stored Procedures** | 22+ | Business logic, validation, transactions, user management |
 | **Triggers** | 5 | Automatic actions, audit logging |
 | **Views** | 5 | Simplified queries, reporting |
 | **Indexes** | 20+ | Performance optimization |
@@ -264,13 +276,24 @@ The database follows **Third Normal Form (3NF)**:
 
 ### Stored Procedures
 
-1. **SP_CreateClaimWithValidation** - Create claim with validation and transaction
-2. **SP_UpdateClaimStatus** - Update claim status with automatic timestamps
-3. **SP_DeleteDeceasedWithAssets** - Delete deceased with cascade operations
-4. **SP_GetPendingClaims** - Retrieve pending claims with filtering
-5. **SP_BatchCreateAssets** - Create multiple assets with savepoints
-6. **SP_BulkVerifyClaims** - Verify multiple claims at once
-7. **SP_CreateUserByAdmin** - Create user (admin-only, with validation)
+**Deceased Operations:**
+- SP_CreateDeceasedWithValidation, SP_UpdateDeceasedRecord, SP_DeleteDeceasedRecord, SP_GetDeceasedWithAssets
+
+**Asset Operations:**
+- SP_CreateAssetWithValidation, SP_UpdateAssetRecord, SP_DeleteAssetRecord, SP_GetAssetsByDeceased
+
+**Claimant Operations:**
+- SP_CreateClaimantWithValidation, SP_UpdateClaimantRecord, SP_DeleteClaimantRecord
+
+**Claim Operations:**
+- SP_CreateClaimWithValidation, SP_UpdateClaimStatus, SP_GetPendingClaims
+
+**Institution Operations:**
+- SP_CreateInstitution, SP_UpdateInstitution, SP_DeleteInstitution
+
+**User Management:**
+- SP_CreateUserByAdmin, SP_UpdateUserByAdmin, SP_DeleteUserByAdmin, SP_GetAllUsers
+- SP_CreateSQLServerLogin, SP_UpdateSQLServerLoginPermissions, SP_DropSQLServerLogin
 
 ### Triggers
 
@@ -312,8 +335,11 @@ The database implements ACID-compliant transactions with savepoints for partial 
 
 ✅ **Access Control**
 - Role-based access control (Admin, Staff, Viewer)
+- Database-level SQL Server login integration
+- Automatic SQL Server login creation with role-based permissions
 - Admin-only user creation (UI + Database level)
 - Database-level role validation
+- First-time onboarding with automatic admin assignment
 
 ✅ **Data Integrity**
 - Primary keys on all tables
@@ -352,9 +378,8 @@ FARVS/
 │   ├── farvs_db.sql       # Complete database schema (ALL SQL)
 │   ├── db_connect.py      # Connection utilities
 │   ├── db_operations.py   # Database operations (stored procedure calls)
-│   ├── models_*.py        # Database models
-│   ├── seed_data.py       # Database seeding
-│   └── run_migration.py   # Migration utilities
+│   ├── models_*.py        # Database models (legacy, being phased out)
+│   └── seed_data.py       # Database seeding
 │
 ├── ui/                      # User interface layer
 │   ├── theme.py           # Blue & white theme

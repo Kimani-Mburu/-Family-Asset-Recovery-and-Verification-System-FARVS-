@@ -173,6 +173,7 @@ class RecordCard:
         details_frame = tk.Frame(content, bg=WHITE)
         details_frame.pack(fill=tk.X)
         
+        # Common fields (always shown)
         if self.record.get('DeceasedName'):
             tk.Label(
                 details_frame,
@@ -195,6 +196,154 @@ class RecordCard:
             tk.Label(
                 details_frame,
                 text=f"ID: {self.record['Identifier']}",
+                font=("Segoe UI", 9),
+                bg=WHITE,
+                fg=GRAY_TEXT
+            ).pack(anchor=tk.W, pady=2)
+        
+        # Asset type-specific fields
+        asset_type = self.record.get('AssetType', '')
+        
+        # Bank Account fields
+        if asset_type == 'Bank Account':
+            if self.record.get('AccountStatus'):
+                tk.Label(
+                    details_frame,
+                    text=f"Status: {self.record['AccountStatus']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('Currency'):
+                tk.Label(
+                    details_frame,
+                    text=f"Currency: {self.record['Currency']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('InterestRate'):
+                tk.Label(
+                    details_frame,
+                    text=f"Interest Rate: {self.record['InterestRate']}%",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('AccountHolderName'):
+                tk.Label(
+                    details_frame,
+                    text=f"Account Holder: {self.record['AccountHolderName']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('BranchLocation'):
+                tk.Label(
+                    details_frame,
+                    text=f"Branch: {self.record['BranchLocation']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('AccountOpeningDate'):
+                opening = str(self.record['AccountOpeningDate'])[:10] if len(str(self.record['AccountOpeningDate'])) > 10 else str(self.record['AccountOpeningDate'])
+                tk.Label(
+                    details_frame,
+                    text=f"Opened: {opening}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+        
+        # Investment fields
+        elif asset_type == 'Investment':
+            if self.record.get('InterestRate'):
+                tk.Label(
+                    details_frame,
+                    text=f"Interest Rate: {self.record['InterestRate']}%",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('MaturityDate'):
+                maturity = str(self.record['MaturityDate'])[:10] if len(str(self.record['MaturityDate'])) > 10 else str(self.record['MaturityDate'])
+                tk.Label(
+                    details_frame,
+                    text=f"Maturity: {maturity}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('Currency'):
+                tk.Label(
+                    details_frame,
+                    text=f"Currency: {self.record['Currency']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('AccountOpeningDate'):
+                opening = str(self.record['AccountOpeningDate'])[:10] if len(str(self.record['AccountOpeningDate'])) > 10 else str(self.record['AccountOpeningDate'])
+                tk.Label(
+                    details_frame,
+                    text=f"Opened: {opening}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+        
+        # Insurance Policy fields
+        elif asset_type == 'Insurance Policy':
+            if self.record.get('MaturityDate'):
+                maturity = str(self.record['MaturityDate'])[:10] if len(str(self.record['MaturityDate'])) > 10 else str(self.record['MaturityDate'])
+                tk.Label(
+                    details_frame,
+                    text=f"Expiry: {maturity}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+            if self.record.get('BeneficiaryInfo'):
+                tk.Label(
+                    details_frame,
+                    text=f"Beneficiary: {self.record['BeneficiaryInfo']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+        
+        # Real Estate fields
+        elif asset_type == 'Real Estate':
+            # Note: These fields would need to be stored in the database
+            # For now, showing what's available
+            if self.record.get('Documentation'):
+                tk.Label(
+                    details_frame,
+                    text=f"Docs: {self.record['Documentation']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+        
+        # Vehicle fields
+        elif asset_type == 'Vehicle':
+            # Note: These fields would need to be stored in the database
+            # For now, showing what's available
+            if self.record.get('Documentation'):
+                tk.Label(
+                    details_frame,
+                    text=f"Docs: {self.record['Documentation']}",
+                    font=("Segoe UI", 9),
+                    bg=WHITE,
+                    fg=GRAY_TEXT
+                ).pack(anchor=tk.W, pady=2)
+        
+        # Other/General fields (if any relevant)
+        if self.record.get('BeneficiaryInfo') and asset_type not in ['Insurance Policy']:
+            tk.Label(
+                details_frame,
+                text=f"Beneficiary: {self.record['BeneficiaryInfo']}",
                 font=("Segoe UI", 9),
                 bg=WHITE,
                 fg=GRAY_TEXT

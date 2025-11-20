@@ -65,6 +65,7 @@ class AssetFormFields:
                 ('maturity_date', 'Maturity Date', 'datepicker', None),
                 ('interest_rate', 'Interest Rate (%)', 'entry', None),
                 ('currency', 'Currency', 'combobox', ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'Other']),
+                ('investment_type', 'Investment Type', 'combobox', ['Stocks', 'Bonds', 'Mutual Funds', 'ETF', 'Other']),
                 ('beneficiary_info', 'Beneficiary Info', 'entry', None),
             ],
             'hide_fields': ['last_transaction_date', 'account_holder_name', 'branch_location',

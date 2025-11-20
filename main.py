@@ -59,6 +59,10 @@ class MainWindow:
         self.root.title("Family Asset Recovery and Verification System (FARVS)")
         self.root.geometry("1600x1000")
         self.root.minsize(1400, 800)
+        
+        # Icon setting disabled for now
+        # self._set_window_icon()
+        
         logger.debug("Root window created")
         
         # Database connection status
@@ -171,17 +175,17 @@ class MainWindow:
         )
         signin_btn.grid(row=0, column=0, padx=5)
         
-        # Create user button (only show if no users exist or if admin is logged in)
-        # For initial setup, allow user creation. After that, only admins can create users.
+        # Create user/account button (only show if no users exist or if admin is logged in)
+        # For initial setup, allow account creation. After that, only admins can create users.
         self.create_user_btn = ttk.Button(
             buttons_frame,
-            text="Create User",
+            text="Create Account",  # Will be updated based on context
             command=self._create_user,
             width=15
         )
         self.create_user_btn.grid(row=0, column=1, padx=5)
         
-        # Check if users exist and hide button if non-admin is logged in
+        # Check if users exist and update button visibility/text
         self._update_create_user_button_visibility()
         
         # Database status (if not connected)
@@ -1048,38 +1052,42 @@ class MainWindow:
             messagebox.showerror("Authentication", f"Login failed: {str(e)}")
     
     def _update_create_user_button_visibility(self):
-        """Update visibility of Create User button based on user role and existing users."""
+        """Update visibility and text of Create Account button based on user role and existing users."""
         try:
             all_users = self.users_model.list()
             current_user = get_current_user()
             
+            if not hasattr(self, 'create_user_btn'):
+                return
+            
             # Show button if:
-            # 1. No users exist (initial setup)
-            # 2. Current user is Admin
+            # 1. No users exist (initial setup - first-time onboarding)
+            # 2. Current user is Admin (logged in as admin)
             if not all_users:
-                # Initial setup - show button
-                if hasattr(self, 'create_user_btn'):
-                    self.create_user_btn.grid()
+                # Initial setup - show "Create Account" button
+                self.create_user_btn.config(text="Create Account")
+                self.create_user_btn.grid()
             elif current_user and current_user.get('Role') == 'Admin':
-                # Admin is logged in - show button
-                if hasattr(self, 'create_user_btn'):
-                    self.create_user_btn.grid()
+                # Admin is logged in - show "Create User" button
+                self.create_user_btn.config(text="Create User")
+                self.create_user_btn.grid()
             else:
                 # Non-admin or not logged in - hide button
-                if hasattr(self, 'create_user_btn'):
-                    self.create_user_btn.grid_remove()
+                self.create_user_btn.grid_remove()
         except Exception:
             # If check fails, show button (safer default for initial setup)
             if hasattr(self, 'create_user_btn'):
+                self.create_user_btn.config(text="Create Account")
                 self.create_user_btn.grid()
     
     def _create_user(self):
-        """Handle user creation - only allowed for Admin users or if no users exist."""
+        """Handle user creation - only allowed for Admin users or if no users exist (first-time setup)."""
         from db.models_users import UsersModel
         
         # Check if any users exist
         users_model = UsersModel()
         all_users = users_model.list()
+        is_first_user = not all_users
         
         # If users exist, check if current user is admin
         if all_users and self.current_user:
@@ -1094,53 +1102,80 @@ class MainWindow:
         # Show user creation dialog
         from ui.components import ModalDialog
         
-        modal = ModalDialog(self.root, "Create New User", width=500, height=400)
+        # Different title and messaging for first-time setup
+        if is_first_user:
+            modal_title = "Create Admin Account"
+            info_text = "Welcome! Create the first administrator account for your organization.\nThis account will have full administrative privileges."
+        else:
+            modal_title = "Create New User"
+            info_text = "Create a new user account. Only administrators can create users."
+        
+        modal = ModalDialog(self.root, modal_title, width=500, height=450)
         
         # Form fields
         form_frame = ttk.Frame(modal.content_frame, padding="20")
         form_frame.pack(fill=tk.BOTH, expand=True)
         
+        # Info label
+        info_label = ttk.Label(
+            form_frame, 
+            text=info_text, 
+            font=("Segoe UI", 9),
+            foreground="gray",
+            wraplength=400,
+            justify=tk.LEFT
+        )
+        info_label.grid(row=0, column=0, columnspan=2, pady=(0, 15), sticky=tk.W)
+        
         # Username
         ttk.Label(form_frame, text="Username:", font=("Segoe UI", 10)).grid(
-            row=0, column=0, sticky=tk.W, pady=5
+            row=1, column=0, sticky=tk.W, pady=5
         )
         username_var = tk.StringVar()
         username_entry = ttk.Entry(form_frame, textvariable=username_var, width=30, font=("Segoe UI", 10))
-        username_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+        username_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
         username_entry.focus()
         
         # Password
         ttk.Label(form_frame, text="Password:", font=("Segoe UI", 10)).grid(
-            row=1, column=0, sticky=tk.W, pady=5
+            row=2, column=0, sticky=tk.W, pady=5
         )
         password_var = tk.StringVar()
         password_entry = ttk.Entry(form_frame, textvariable=password_var, width=30, show="*", font=("Segoe UI", 10))
-        password_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+        password_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
         
-        # Role (only admin can set roles, default to Staff for new users)
-        ttk.Label(form_frame, text="Role:", font=("Segoe UI", 10)).grid(
-            row=2, column=0, sticky=tk.W, pady=5
-        )
-        role_var = tk.StringVar(value="Staff")
-        role_combo = ttk.Combobox(form_frame, textvariable=role_var, width=27, state="readonly")
-        if all_users and self.current_user and self.current_user.get('Role') == 'Admin':
-            role_combo['values'] = ('Admin', 'Staff', 'Viewer')
+        # Role (first user gets Admin automatically, others can be set by admin)
+        role_label = ttk.Label(form_frame, text="Role:", font=("Segoe UI", 10))
+        role_label.grid(row=3, column=0, sticky=tk.W, pady=5)
+        role_var = tk.StringVar()
+        
+        if is_first_user:
+            # First user is automatically Admin - show as read-only
+            role_var.set("Admin")
+            role_display = ttk.Label(
+                form_frame, 
+                text="Admin (First account)", 
+                font=("Segoe UI", 10, "bold"),
+                foreground="green"
+            )
+            role_display.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
         else:
-            role_combo['values'] = ('Staff', 'Viewer')
-            role_combo.set('Staff')
-        role_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+            # Admin can set role for new users
+            role_var.set("Staff")
+            role_combo = ttk.Combobox(form_frame, textvariable=role_var, width=27, state="readonly")
+            role_combo['values'] = ('Admin', 'Staff', 'Viewer')
+            role_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
         
         form_frame.columnconfigure(1, weight=1)
         
         # Error label
-        error_label = ttk.Label(form_frame, text="", foreground="red")
-        error_label.grid(row=3, column=0, columnspan=2, pady=10)
+        error_label = ttk.Label(form_frame, text="", foreground="red", font=("Segoe UI", 9))
+        error_label.grid(row=4, column=0, columnspan=2, pady=10)
         
         def save_user():
             """Save user from modal."""
             username = username_var.get().strip()
             password = password_var.get()
-            role = role_var.get()
             
             # Validate
             if not username:
@@ -1151,23 +1186,53 @@ class MainWindow:
                 return
             if len(password) < 3:
                 error_label.config(text="Password must be at least 3 characters")
-            return
-        
-        try:
+                return
+            
+            try:
+                # Determine role: Admin for first user, selected role for others
+                if is_first_user:
+                    role = "Admin"  # First user is always Admin
+                else:
+                    role = role_var.get()
+                
                 # Use secure password hashing
                 password_hash = hash_password(password)
-                user_id = users_model.create(
-                    username=username,
-                    password_hash=password_hash,
-                    role=role
-                )
+                
+                # For first user, use simple create (no admin required)
+                # For subsequent users, use stored procedure (requires admin)
+                if is_first_user:
+                    user_id = users_model.create(
+                        username=username,
+                        password_hash=password_hash,
+                        role=role
+                    )
+                else:
+                    # Use stored procedure for subsequent users (requires admin)
+                    from db.db_operations import db_ops
+                    success, user_id, error = db_ops.create_user_by_admin(
+                        username=username,
+                        password_hash=password_hash,
+                        role=role,
+                        created_by_user_id=self.current_user["UserId"],
+                        create_sql_login=True
+                    )
+                    if not success:
+                        error_label.config(text=error or "Failed to create user")
+                        return
                 
                 modal.result = True
                 modal.dialog.destroy()
                 
-                messagebox.showinfo("Success", f"User '{username}' created successfully with role '{role}'.")
+                if is_first_user:
+                    messagebox.showinfo(
+                        "Account Created", 
+                        f"Admin account '{username}' created successfully!\n\n"
+                        "You will now be logged in automatically."
+                    )
+                else:
+                    messagebox.showinfo("Success", f"User '{username}' created successfully with role '{role}'.")
                 
-                # If no user was logged in, log in as the new user
+                # If no user was logged in (first-time setup), log in as the new user
                 if not self.current_user:
                     set_current_user({
                         "UserId": user_id,
@@ -1180,12 +1245,13 @@ class MainWindow:
                     # Update button visibility after user creation
                     self._update_create_user_button_visibility()
                 
-        except Exception as e:
+            except Exception as e:
                 error_msg = str(e)
-                if "UNIQUE" in error_msg or "duplicate" in error_msg.lower():
+                if "UNIQUE" in error_msg or "duplicate" in error_msg.lower() or "already exists" in error_msg.lower():
                     error_label.config(text="Username already exists")
                 else:
                     error_label.config(text=f"Error: {error_msg}")
+                logger.error(f"Error creating user: {e}", exc_info=True)
         
         # Bind Enter key
         username_entry.bind('<Return>', lambda e: password_entry.focus())
@@ -1193,15 +1259,33 @@ class MainWindow:
         
         # Buttons
         modal.add_button("Cancel", style="default")
-        modal.add_button("Create User", save_user, style="primary")
+        if is_first_user:
+            modal.add_button("Create Admin Account", save_user, style="primary")
+        else:
+            modal.add_button("Create User", save_user, style="primary")
         
         # Show modal
         modal.show()
     
+    # Icon setting disabled - can be re-enabled later if needed
+    # def _set_window_icon(self):
+    #     """Set the taskbar/window icon using Windows API."""
+    #     pass
+    
     def _logout(self):
         """Handle user logout."""
+        # Clear user session
         set_current_user(None)
         self.current_user = None
+        
+        # Clear all widgets from root window
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        # Recreate main container
+        self._setup_ui()
+        
+        # Show login screen
         self._show_login_screen()
     
     def _show_about(self):

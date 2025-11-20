@@ -18,12 +18,8 @@ from typing import Optional, List, Dict, Any
 import datetime
 import csv
 
-# Import database models
-from db.models_deceased import DeceasedModel
-from db.models_assets import AssetsModel
-from db.models_claims import ClaimsModel
-from db.models_claimants import ClaimantsModel
-from db.models_institutions import InstitutionsModel
+# Import database operations
+from db.db_operations import db_ops
 
 
 class ReportsWindow:
@@ -60,14 +56,8 @@ class ReportsWindow:
         # Data storage
         self.report_data: Dict[str, Any] = {}
         
-        # Initialize database models
-        self.deceased_model = DeceasedModel()
-        self.assets_model = AssetsModel()
-        self.claims_model = ClaimsModel()
-        self.claimants_model = ClaimantsModel()
-        self.institutions_model = InstitutionsModel()
-        
         self._setup_ui()
+        self._load_institutions_for_filter()
         self._load_dashboard_data()
     
     def _setup_ui(self):
@@ -182,6 +172,19 @@ class ReportsWindow:
         # Claims treeview
         self._create_claims_report_treeview(results_frame)
     
+    def _load_institutions_for_filter(self):
+        """Load institutions for the filter dropdown."""
+        try:
+            from db.models_institutions import InstitutionsModel
+            institutions_model = InstitutionsModel()
+            institutions = institutions_model.get_all()
+            institution_names = ['All'] + [f"{i['Name']} ({i['Type']})" for i in institutions]
+            if hasattr(self, 'institution_combo'):
+                self.institution_combo['values'] = institution_names
+        except Exception as e:
+            # If loading fails, keep default 'All' option
+            pass
+    
     def _setup_assets_reports_tab(self, parent: ttk.Frame):
         """Setup the assets reports tab."""
         # Main container
@@ -204,13 +207,14 @@ class ReportsWindow:
         asset_type_combo.set('All')
         asset_type_combo.grid(row=0, column=1, padx=(10, 0))
         
-        # Institution filter
+        # Institution filter - will be populated dynamically
         ttk.Label(controls_frame, text="Institution:").grid(row=0, column=2, padx=(20, 5))
         self.institution_filter_var = tk.StringVar()
         institution_combo = ttk.Combobox(controls_frame, textvariable=self.institution_filter_var, width=20, state="readonly")
-        institution_combo['values'] = ('All', 'National Bank', 'State Insurance')
+        institution_combo['values'] = ('All',)  # Will be populated with actual institutions
         institution_combo.set('All')
         institution_combo.grid(row=0, column=3, padx=(10, 0))
+        self.institution_combo = institution_combo
         
         # Generate and export buttons
         generate_btn = ttk.Button(controls_frame, text="Generate Report", command=self._generate_assets_report)
@@ -429,15 +433,19 @@ class ReportsWindow:
     def _load_dashboard_data(self):
         """Load dashboard data and update metrics."""
         try:
-            # Load statistics from database
-            deceased_count = self.deceased_model.count()
-            assets_count = self.assets_model.count()
-            claims_count = self.claims_model.count_by_status('Pending')
+            # Load statistics from database using db_operations
+            deceased_records = db_ops.get_deceased_with_assets()
+            assets_records = db_ops.get_assets_by_deceased()
+            claims_records = db_ops.get_claims_detailed()
+            
+            deceased_count = len(deceased_records)
+            assets_count = len(assets_records)
+            pending_claims = len([c for c in claims_records if c.get('Status') == 'Pending'])
             
             # Update metric labels
             self.deceased_count_label.config(text=str(deceased_count))
             self.assets_count_label.config(text=str(assets_count))
-            self.claims_count_label.config(text=str(claims_count))
+            self.claims_count_label.config(text=str(pending_claims))
             
             # Load recent activity
             self._load_recent_activity()
@@ -448,16 +456,19 @@ class ReportsWindow:
     def _load_statistics(self):
         """Load and display statistics."""
         try:
-            # Load statistics
-            total_deceased = self.deceased_model.count()
-            total_assets = self.assets_model.count()
-            total_claims = len(self.claims_model.get_all_with_details())
-            pending_claims = len(self.claims_model.get_by_status('Pending'))
-            settled_claims = len(self.claims_model.get_by_status('Settled'))
+            # Load statistics using db_operations
+            deceased_records = db_ops.get_deceased_with_assets()
+            assets_records = db_ops.get_assets_by_deceased()
+            claims_records = db_ops.get_claims_detailed()
+            
+            total_deceased = len(deceased_records)
+            total_assets = len(assets_records)
+            total_claims = len(claims_records)
+            pending_claims = len([c for c in claims_records if c.get('Status') == 'Pending'])
+            settled_claims = len([c for c in claims_records if c.get('Status') == 'Settled'])
             
             # Calculate total asset value
-            assets = self.assets_model.get_all_with_details()
-            total_value = sum(asset.get('EstimatedValue', 0) or 0 for asset in assets)
+            total_value = sum(asset.get('EstimatedValue', 0) or 0 for asset in assets_records)
             
             # Update labels
             self.total_deceased_label.config(text=str(total_deceased))
@@ -477,11 +488,12 @@ class ReportsWindow:
             for item in self.activity_tree.get_children():
                 self.activity_tree.delete(item)
             
-            # Load recent activities from claims
+            # Load recent activities from claims using db_operations
             activities = []
             try:
                 # Get recent claims as activity
-                recent_claims = self.claims_model.get_all_with_details()[:10]
+                claims_records = db_ops.get_claims_detailed()
+                recent_claims = claims_records[:10]
                 for claim in recent_claims:
                     # Get filed date
                     filed_date = claim.get('FiledAt')
@@ -496,15 +508,13 @@ class ReportsWindow:
                     activity_type = f"Claim {claim.get('Status', 'Filed')}"
                     
                     # Get claimant name
-                    claimant_first = claim.get('ClaimantFirstName', '')
-                    claimant_last = claim.get('ClaimantLastName', '')
-                    claimant_name = f"{claimant_first} {claimant_last}".strip() or 'Unknown'
+                    claimant_name = claim.get('ClaimantName', '') or f"{claim.get('ClaimantFirstName', '')} {claim.get('ClaimantLastName', '')}".strip() or 'Unknown'
                     # Get asset type
                     asset_type = claim.get('AssetType', 'Asset')
                     activity_desc = f"{claimant_name} - {asset_type}"
                     activities.append((activity_date, activity_type, activity_desc))
             except Exception:
-                # If audit log query fails, show empty list
+                # If query fails, show empty list
                 pass
             
             # Populate treeview
@@ -523,31 +533,48 @@ class ReportsWindow:
             
             # Get report criteria
             report_type = self.report_type_var.get()
-            start_date = self.start_date_picker.value.get() if hasattr(self, 'start_date_picker') else ""
-            end_date = self.end_date_picker.value.get() if hasattr(self, 'end_date_picker') else ""
+            start_date_str = self.start_date_picker.value.get() if hasattr(self, 'start_date_picker') and hasattr(self.start_date_picker, 'value') else ""
+            end_date_str = self.end_date_picker.value.get() if hasattr(self, 'end_date_picker') and hasattr(self.end_date_picker, 'value') else ""
             
-            # Load claims from database
-            if report_type == "All Claims":
-                claims_data = self.claims_model.get_all_with_details()
-            elif report_type == "Pending Claims":
-                claims_data = self.claims_model.get_by_status('Pending')
+            # Load claims from database using db_operations
+            claims_records = db_ops.get_claims_detailed()
+            
+            # Filter by status
+            if report_type == "Pending Claims":
+                claims_records = [c for c in claims_records if c.get('Status') == 'Pending']
             elif report_type == "Verified Claims":
-                claims_data = self.claims_model.get_by_status('Verified')
+                claims_records = [c for c in claims_records if c.get('Status') == 'Verified']
             elif report_type == "Settled Claims":
-                claims_data = self.claims_model.get_by_status('Settled')
-            else:
-                claims_data = self.claims_model.get_all_with_details()
+                claims_records = [c for c in claims_records if c.get('Status') == 'Settled']
+            # "All Claims" - no filter
+            
+            # Filter by date range if provided
+            if start_date_str and start_date_str != "YYYY-MM-DD":
+                try:
+                    start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                    claims_records = [c for c in claims_records if c.get('FiledAt') and 
+                                    (isinstance(c.get('FiledAt'), datetime.datetime) and c.get('FiledAt').date() >= start_date or
+                                     isinstance(c.get('FiledAt'), datetime.date) and c.get('FiledAt') >= start_date)]
+                except ValueError:
+                    pass
+            
+            if end_date_str and end_date_str != "YYYY-MM-DD":
+                try:
+                    end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                    claims_records = [c for c in claims_records if c.get('FiledAt') and 
+                                    (isinstance(c.get('FiledAt'), datetime.datetime) and c.get('FiledAt').date() <= end_date or
+                                     isinstance(c.get('FiledAt'), datetime.date) and c.get('FiledAt') <= end_date)]
+                except ValueError:
+                    pass
             
             # Format claims data for display
             claims = []
-            for claim in claims_data:
+            for claim in claims_records:
                 # Get asset type and identifier
                 asset_type = claim.get('AssetType', 'Unknown')
-                asset_identifier = claim.get('Identifier', 'N/A')
+                asset_identifier = claim.get('AssetIdentifier', 'N/A')
                 # Get deceased name
-                deceased_first = claim.get('DeceasedFirstName', '')
-                deceased_last = claim.get('DeceasedLastName', '')
-                deceased_name = f"{deceased_first} {deceased_last}".strip() or 'Unknown'
+                deceased_name = claim.get('DeceasedName', '') or f"{claim.get('DeceasedFirstName', '')} {claim.get('DeceasedLastName', '')}".strip() or 'Unknown'
                 # Build asset description
                 asset_desc = f"{asset_type} - {asset_identifier} ({deceased_name})"
                 # Get filed date
@@ -562,9 +589,7 @@ class ReportsWindow:
                 value = claim.get('EstimatedValue', 0)
                 value_str = f"${value:,.2f}" if value else "$0.00"
                 # Get claimant name
-                claimant_first = claim.get('ClaimantFirstName', '')
-                claimant_last = claim.get('ClaimantLastName', '')
-                claimant_name = f"{claimant_first} {claimant_last}".strip() or 'Unknown'
+                claimant_name = claim.get('ClaimantName', '') or f"{claim.get('ClaimantFirstName', '')} {claim.get('ClaimantLastName', '')}".strip() or 'Unknown'
                 
                 claims.append((
                     claim.get('ClaimId', 0),
@@ -593,37 +618,39 @@ class ReportsWindow:
             asset_type = self.asset_type_filter_var.get()
             institution = self.institution_filter_var.get()
             
-            # Load assets from database
-            if asset_type == "All Types" and institution == "All Institutions":
-                assets_data = self.assets_model.get_all_with_details()
-            elif asset_type != "All Types":
-                assets_data = self.assets_model.get_by_type(asset_type)
-            else:
-                assets_data = self.assets_model.get_all_with_details()
+            # Load assets from database using db_operations
+            assets_records = db_ops.get_assets_by_deceased(deceased_id=None)
+            
+            # Filter by asset type if specified
+            if asset_type and asset_type != "All":
+                assets_records = [a for a in assets_records if a.get('AssetType') == asset_type]
+            
+            # Filter by institution if specified
+            if institution and institution != "All":
+                # Extract institution name from filter
+                inst_name = institution.split(' (')[0] if ' (' in institution else institution
+                assets_records = [a for a in assets_records if a.get('InstitutionName') == inst_name]
             
             # Format assets data for display
             assets = []
-            for asset in assets_data:
+            for asset in assets_records:
                 # Format asset value
                 value = f"${asset.get('EstimatedValue', 0):,.2f}" if asset.get('EstimatedValue') else "$0.00"
-                # Count claims for this asset (simplified - in production use proper join)
+                # Count claims for this asset (simplified - in production use proper query)
                 claim_count = 0  # Could be enhanced with proper query
+                
+                # Get deceased name
+                deceased_name = asset.get('DeceasedName', '') or f"{asset.get('DeceasedFirstName', '')} {asset.get('DeceasedLastName', '')}".strip() or 'Unknown'
                 
                 assets.append((
                     asset.get('AssetId', 0),
-                    asset.get('DeceasedName', 'Unknown'),
+                    deceased_name,
                     asset.get('AssetType', 'Unknown'),
                     asset.get('InstitutionName', 'Unknown'),
                     asset.get('Identifier', 'N/A'),
                     value,
                     claim_count
                 ))
-            
-            # Filter by institution if specified
-            if institution != "All Institutions":
-                # Extract institution name from filter
-                inst_name = institution.split(' (')[0] if ' (' in institution else institution
-                assets = [a for a in assets if a[3] == inst_name]
             
             # Populate treeview
             for asset in assets:

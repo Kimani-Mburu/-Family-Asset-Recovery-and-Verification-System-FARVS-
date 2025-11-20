@@ -17,12 +17,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 
-# Import database models
-from db.models_users import UsersModel
-from db.models_audit import AuditLogModel
+# Import database operations and authentication
+from db.db_operations import db_ops
 from auth.session import get_current_user
 from auth.password import hash_password
 from ui.theme import stripe_treeview
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UsersWindow:
@@ -48,9 +50,7 @@ class UsersWindow:
         self.container = container
         self.window = container if container else tk.Toplevel(parent) if parent else tk.Tk()
         
-        # Database models
-        self.users_model = UsersModel()
-        self.audit = AuditLogModel()
+        # Database operations (using stored procedures with SQL Server login support)
         
         # Current selection
         self.current_user = None
@@ -106,7 +106,7 @@ class UsersWindow:
         ttk.Label(search_frame, text="Role:").grid(row=0, column=2, padx=(0, 5))
         self.role_filter_var = tk.StringVar()
         role_combo = ttk.Combobox(search_frame, textvariable=self.role_filter_var, width=15, state="readonly")
-        role_combo['values'] = ('All', 'Admin', 'User')
+        role_combo['values'] = ('All', 'Admin', 'Staff', 'Viewer')
         role_combo.set('All')
         role_combo.bind('<<ComboboxSelected>>', self._on_role_filter_change)
         role_combo.grid(row=0, column=3)
@@ -155,8 +155,8 @@ class UsersWindow:
         ttk.Label(label_frame, text="*", foreground="red").pack(side=tk.LEFT, padx=(2, 0))
         self.role_var = tk.StringVar()
         role_combo = ttk.Combobox(parent, textvariable=self.role_var, width=22, state="readonly")
-        role_combo['values'] = ('Admin', 'User')
-        role_combo.set('User')
+        role_combo['values'] = ('Admin', 'Staff', 'Viewer')
+        role_combo.set('Staff')
         role_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(5, 0))
         create_tooltip(role_combo, "Required: User role (Admin or User)")
         
@@ -224,12 +224,15 @@ class UsersWindow:
         ttk.Button(btn_frame, text="🧹 Clear Form", command=self._clear_form).pack(side=tk.LEFT, padx=5)
     
     def _load_users(self):
-        """Load users from database."""
+        """Load users from database using stored procedure."""
         try:
-            self.users = self.users_model.list()
+            self.users = db_ops.get_all_users()
             self._display_users()
+            logger.info(f"Loaded {len(self.users)} users from database")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load users: {e}")
+            error_msg = f"Failed to load users: {e}"
+            logger.error(error_msg, exc_info=True)
+            messagebox.showerror("Error", error_msg)
     
     def _display_users(self):
         """Display users in treeview."""
@@ -326,52 +329,57 @@ class UsersWindow:
         return True
     
     def _add_user(self):
-        """Add a new user."""
+        """Add a new user with SQL Server login support."""
         if not self._validate_form():
             return
         
         try:
-            # Check if username already exists
-            existing_users = self.users_model.list()
-            username = self.username_var.get().strip()
-            if any(u["Username"].lower() == username.lower() for u in existing_users):
-                messagebox.showerror("Error", "Username already exists.")
+            # Get current user (must be admin)
+            user = get_current_user()
+            if not user:
+                messagebox.showerror("Error", "You must be logged in to create users.")
                 return
             
-            # Hash password
+            created_by_user_id = user["UserId"]
+            
+            # Get form data
+            username = self.username_var.get().strip()
             password = self.password_var.get().strip()
+            role = self.role_var.get().strip()
+            email = None  # Email field not in form, can be added later
+            
+            # Hash password
             hashed_password = hash_password(password)
             
-            # Prepare user data
-            user_data = {
-                "Username": username,
-                "PasswordHash": hashed_password,
-                "Role": self.role_var.get().strip()
-            }
-            
-            # DB create (using stored procedure for admin-only enforcement)
-            new_id = self.users_model.create(user_data)
-            
-            # Audit
-            user = get_current_user()
-            self.audit.write(
-                user_id=user["UserId"] if user else None,
-                action="CREATE",
-                entity="User",
-                entity_id=str(new_id),
-                details=f"Created user: {username} with role {user_data['Role']}",
-                ip=None
+            # Create user using stored procedure (automatically creates SQL Server login)
+            # SQL Server login password defaults to temp password, user should change it
+            success, new_id, error = db_ops.create_user_by_admin(
+                username=username,
+                password_hash=hashed_password,
+                role=role,
+                created_by_user_id=created_by_user_id,
+                email=email,
+                create_sql_login=True  # Automatically create SQL Server login
             )
             
-            messagebox.showinfo("Success", "User added successfully.")
-            self._clear_form()
-            self._load_users()
+            if success:
+                messagebox.showinfo("Success", 
+                    f"User '{username}' created successfully.\n"
+                    f"SQL Server login created with role: {role}\n"
+                    f"Default SQL login password: TempPassword123!\n"
+                    f"User should change this password on first login.")
+                self._clear_form()
+                self._load_users()
+            else:
+                messagebox.showerror("Error", f"Failed to add user: {error}")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to add user: {e}")
+            error_msg = f"Failed to add user: {e}"
+            logger.error(error_msg, exc_info=True)
+            messagebox.showerror("Error", error_msg)
     
     def _update_user(self):
-        """Update the selected user record."""
+        """Update the selected user record with SQL Server login permission updates."""
         if not self.current_user:
             messagebox.showwarning("No Selection", "Please select a user to update.")
             return
@@ -380,91 +388,104 @@ class UsersWindow:
             return
         
         try:
-            # Check if username already exists (excluding current user)
-            existing_users = self.users_model.list()
-            username = self.username_var.get().strip()
-            if any(u["UserId"] != self.current_user["UserId"] and u["Username"].lower() == username.lower() for u in existing_users):
-                messagebox.showerror("Error", "Username already exists.")
+            # Get current user (must be admin)
+            user = get_current_user()
+            if not user:
+                messagebox.showerror("Error", "You must be logged in to update users.")
                 return
             
-            # Prepare updated data
-            updated_data = {
-                "UserId": self.current_user["UserId"],
-                "Username": username,
-                "Role": self.role_var.get().strip()
-            }
+            updated_by_user_id = user["UserId"]
+            
+            # Get form data
+            user_id = self.current_user["UserId"]
+            username = self.username_var.get().strip()
+            role = self.role_var.get().strip()
+            email = None  # Email field not in form, can be added later
             
             # Update password only if provided
+            password_hash = None
             password = self.password_var.get().strip()
             if password:
-                updated_data["PasswordHash"] = hash_password(password)
+                password_hash = hash_password(password)
             
-            # DB update
-            self.users_model.update(updated_data["UserId"], updated_data)
-            
-            # Audit
-            user = get_current_user()
-            self.audit.write(
-                user_id=user["UserId"] if user else None,
-                action="UPDATE",
-                entity="User",
-                entity_id=str(updated_data["UserId"]),
-                details=f"Updated user: {username} (role: {updated_data['Role']})",
-                ip=None
+            # Update user using stored procedure (automatically updates SQL Server login permissions if role changes)
+            success, error = db_ops.update_user_by_admin(
+                user_id=user_id,
+                updated_by_user_id=updated_by_user_id,
+                username=username if username != self.current_user["Username"] else None,
+                password_hash=password_hash,
+                role=role if role != self.current_user["Role"] else None,
+                email=email
             )
             
-            messagebox.showinfo("Success", "User updated successfully.")
-            self._load_users()
+            if success:
+                messagebox.showinfo("Success", 
+                    f"User '{username}' updated successfully.\n"
+                    + (f"SQL Server login permissions updated (role changed to: {role})." 
+                       if role != self.current_user["Role"] else ""))
+                self._load_users()
+            else:
+                messagebox.showerror("Error", f"Failed to update user: {error}")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to update user: {e}")
+            error_msg = f"Failed to update user: {e}"
+            logger.error(error_msg, exc_info=True)
+            messagebox.showerror("Error", error_msg)
     
     def _delete_user(self):
-        """Delete the selected user record."""
+        """Delete the selected user record and associated SQL Server login."""
         if not self.current_user:
             messagebox.showwarning("No Selection", "Please select a user to delete.")
             return
         
-        # Prevent deleting yourself
+        # Get current user (must be admin)
         current_logged_user = get_current_user()
-        if current_logged_user and current_logged_user["UserId"] == self.current_user["UserId"]:
+        if not current_logged_user:
+            messagebox.showerror("Error", "You must be logged in to delete users.")
+            return
+        
+        # Prevent deleting yourself (handled by stored procedure, but check here too)
+        if current_logged_user["UserId"] == self.current_user["UserId"]:
             messagebox.showerror("Error", "You cannot delete your own account.")
             return
         
         # Confirmation dialog
         username = self.current_user["Username"]
-        if not messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete user: {username}?"):
+        if not messagebox.askyesno("Confirm Delete", 
+            f"Are you sure you want to delete user: {username}?\n\n"
+            f"This will also delete the associated SQL Server login."):
             return
         
         try:
-            # DB delete
+            # Delete user using stored procedure (automatically deletes SQL Server login)
             user_id = self.current_user["UserId"]
-            self.users_model.delete(user_id)
+            deleted_by_user_id = current_logged_user["UserId"]
             
-            # Audit
-            user = get_current_user()
-            self.audit.write(
-                user_id=user["UserId"] if user else None,
-                action="DELETE",
-                entity="User",
-                entity_id=str(user_id),
-                details=f"Deleted user: {username}",
-                ip=None
+            success, error = db_ops.delete_user_by_admin(
+                user_id=user_id,
+                deleted_by_user_id=deleted_by_user_id
             )
             
-            messagebox.showinfo("Success", "User deleted successfully.")
-            self._clear_form()
-            self._load_users()
+            if success:
+                messagebox.showinfo("Success", 
+                    f"User '{username}' deleted successfully.\n"
+                    f"SQL Server login has been removed.")
+                self._clear_form()
+                self._load_users()
+            else:
+                messagebox.showerror("Error", f"Failed to delete user: {error}")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to delete user: {e}")
+            error_msg = f"Failed to delete user: {e}"
+            logger.error(error_msg, exc_info=True)
+            messagebox.showerror("Error", error_msg)
     
     def _clear_form(self):
         """Clear all form fields."""
         self.user_id_var.set("")
         self.username_var.set("")
         self.password_var.set("")
-        self.role_var.set("User")
+        self.role_var.set("Staff")
         
         self.current_user = None
         

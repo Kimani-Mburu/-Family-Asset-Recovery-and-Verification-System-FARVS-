@@ -16,12 +16,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 import decimal
+import datetime
 
 # Import database models
-from db.models_assets import AssetsModel
-from db.models_deceased import DeceasedModel
-from db.models_institutions import InstitutionsModel
-from db.models_audit import AuditLogModel
+from db.db_operations import db_ops
+from db.models_deceased import DeceasedModel  # Still used for dropdown
+from db.models_institutions import InstitutionsModel  # Still used for dropdown
 from auth.session import get_current_user
 from ui.theme import stripe_treeview
 from logging_config import get_logger
@@ -66,11 +66,9 @@ class AssetsWindow:
         self.deceased_persons: List[Dict[str, Any]] = []
         self.institutions: List[Dict[str, Any]] = []
         
-        # Initialize database models
-        self.assets_model = AssetsModel()
+        # Initialize database models (for dropdowns only)
         self.deceased_model = DeceasedModel()
         self.institutions_model = InstitutionsModel()
-        self.audit = AuditLogModel()
         
         self._setup_ui()
         self._load_data()
@@ -317,8 +315,62 @@ class AssetsWindow:
     def _load_assets(self):
         """Load assets from database and populate the display."""
         try:
-            # Load assets from database with detailed information
-            self.assets = self.assets_model.get_all_with_details()
+            # Load from database using stored procedure (get all assets)
+            records = db_ops.get_assets_by_deceased(deceased_id=None)
+            # Convert to expected format (including detail table fields)
+            self.assets = []
+            for row in records:
+                asset = {
+                    "AssetId": row.get("AssetId"),
+                    "DeceasedId": row.get("DeceasedId"),
+                    "InstitutionId": row.get("InstitutionId"),
+                    "AssetType": row.get("AssetType"),
+                    "Identifier": row.get("Identifier"),
+                    "EstimatedValue": row.get("EstimatedValue"),
+                    "BeneficiaryInfo": row.get("BeneficiaryInfo"),
+                    "Documentation": row.get("Documentation"),
+                    "Notes": row.get("Notes"),
+                    "CreatedAt": row.get("CreatedAt"),
+                    # Include joined data if available
+                    "DeceasedName": row.get("DeceasedName"),
+                    "InstitutionName": row.get("InstitutionName"),
+                    # Bank Account fields
+                    "AccountStatus": row.get("AccountStatus"),
+                    "AccountOpeningDate": row.get("AccountOpeningDate"),
+                    "LastTransactionDate": row.get("LastTransactionDate"),
+                    "InterestRate": row.get("InterestRate"),
+                    "AccountHolderName": row.get("AccountHolderName"),
+                    "BranchLocation": row.get("BranchLocation"),
+                    "Currency": row.get("Currency"),
+                    # Vehicle fields
+                    "VehicleMake": row.get("VehicleMake"),
+                    "VehicleModel": row.get("VehicleModel"),
+                    "VehicleYear": row.get("VehicleYear"),
+                    "VehicleVIN": row.get("VehicleVIN"),
+                    "VehicleRegistration": row.get("VehicleRegistration"),
+                    "VehicleCondition": row.get("VehicleCondition"),
+                    "VehicleMileage": row.get("VehicleMileage"),
+                    # Real Estate fields
+                    "PropertyAddress": row.get("PropertyAddress"),
+                    "PropertyType": row.get("PropertyType"),
+                    "PropertySize": row.get("PropertySize"),
+                    "PropertyCondition": row.get("PropertyCondition"),
+                    "PropertyTaxId": row.get("PropertyTaxId"),
+                    # Investment fields
+                    "InvestmentAccountStatus": row.get("InvestmentAccountStatus"),
+                    "InvestmentAccountOpeningDate": row.get("InvestmentAccountOpeningDate"),
+                    "MaturityDate": row.get("MaturityDate"),
+                    "InvestmentInterestRate": row.get("InvestmentInterestRate"),
+                    "InvestmentCurrency": row.get("InvestmentCurrency"),
+                    "InvestmentType": row.get("InvestmentType"),
+                    # Insurance Policy fields
+                    "PolicyNumber": row.get("PolicyNumber"),
+                    "PolicyType": row.get("PolicyType"),
+                    "PolicyStartDate": row.get("PolicyStartDate"),
+                    "PolicyEndDate": row.get("PolicyEndDate"),
+                    "PremiumAmount": row.get("PremiumAmount")
+                }
+                self.assets.append(asset)
             logger.info(f"Loaded {len(self.assets)} assets from database")
             
             # Ensure assets_container exists
@@ -441,32 +493,82 @@ class AssetsWindow:
         self.institution_var.set(institution_name)
         
         # Set other fields
-        self.asset_type_var.set(asset.get("AssetType", ""))
+        asset_type = asset.get("AssetType", "")
+        self.asset_type_var.set(asset_type)
         self.identifier_var.set(asset.get("Identifier", ""))
         self.value_var.set(str(asset.get("EstimatedValue", "")))
         
-        # Populate all new fields
-        self.account_status_var.set(asset.get('AccountStatus', '') or '')
-        self.currency_var.set(asset.get('Currency', 'USD') or 'USD')
-        account_opening = asset.get('AccountOpeningDate', '')
-        if account_opening:
-            self.account_opening_picker.value.set(str(account_opening)[:10] if len(str(account_opening)) > 10 else str(account_opening))
-        else:
-            self.account_opening_picker.value.set("")
-        last_transaction = asset.get('LastTransactionDate', '')
-        if last_transaction:
-            self.last_transaction_picker.value.set(str(last_transaction)[:10] if len(str(last_transaction)) > 10 else str(last_transaction))
-        else:
-            self.last_transaction_picker.value.set("")
-        self.interest_rate_var.set(str(asset.get('InterestRate', '')) if asset.get('InterestRate') else '')
-        maturity = asset.get('MaturityDate', '')
-        if maturity:
-            self.maturity_picker.value.set(str(maturity)[:10] if len(str(maturity)) > 10 else str(maturity))
-        else:
-            self.maturity_picker.value.set("")
+        # Update dynamic fields based on asset type
+        self._update_dynamic_fields(asset_type)
+        
+        # Populate fields based on asset type
+        if asset_type == 'Bank Account':
+            self.account_status_var.set(asset.get('AccountStatus', '') or '')
+            self.currency_var.set(asset.get('Currency', 'USD') or 'USD')
+            if hasattr(self, 'account_opening_picker'):
+                account_opening = asset.get('AccountOpeningDate', '')
+                if account_opening:
+                    self.account_opening_picker.value.set(str(account_opening)[:10] if len(str(account_opening)) > 10 else str(account_opening))
+                else:
+                    self.account_opening_picker.value.set("")
+            if hasattr(self, 'last_transaction_picker'):
+                last_transaction = asset.get('LastTransactionDate', '')
+                if last_transaction:
+                    self.last_transaction_picker.value.set(str(last_transaction)[:10] if len(str(last_transaction)) > 10 else str(last_transaction))
+                else:
+                    self.last_transaction_picker.value.set("")
+            self.interest_rate_var.set(str(asset.get('InterestRate', '')) if asset.get('InterestRate') else '')
+            self.account_holder_var.set(asset.get('AccountHolderName', '') or '')
+            self.branch_var.set(asset.get('BranchLocation', '') or '')
+        elif asset_type == 'Vehicle':
+            self.vehicle_make_var.set(asset.get('VehicleMake', '') or '')
+            self.vehicle_model_var.set(asset.get('VehicleModel', '') or '')
+            self.vehicle_year_var.set(str(asset.get('VehicleYear', '')) if asset.get('VehicleYear') else '')
+            self.vehicle_vin_var.set(asset.get('VehicleVIN', '') or '')
+            self.vehicle_registration_var.set(asset.get('VehicleRegistration', '') or '')
+            self.vehicle_condition_var.set(asset.get('VehicleCondition', '') or '')
+            self.vehicle_mileage_var.set(str(asset.get('VehicleMileage', '')) if asset.get('VehicleMileage') else '')
+        elif asset_type == 'Real Estate':
+            self.property_address_var.set(asset.get('PropertyAddress', '') or '')
+            self.property_type_var.set(asset.get('PropertyType', '') or '')
+            self.property_size_var.set(str(asset.get('PropertySize', '')) if asset.get('PropertySize') else '')
+            self.property_condition_var.set(asset.get('PropertyCondition', '') or '')
+            self.property_tax_id_var.set(asset.get('PropertyTaxId', '') or '')
+        elif asset_type == 'Investment':
+            self.account_status_var.set(asset.get('InvestmentAccountStatus', '') or '')
+            self.currency_var.set(asset.get('InvestmentCurrency', 'USD') or 'USD')
+            if hasattr(self, 'account_opening_picker'):
+                account_opening = asset.get('InvestmentAccountOpeningDate', '')
+                if account_opening:
+                    self.account_opening_picker.value.set(str(account_opening)[:10] if len(str(account_opening)) > 10 else str(account_opening))
+                else:
+                    self.account_opening_picker.value.set("")
+            if hasattr(self, 'maturity_picker'):
+                maturity = asset.get('MaturityDate', '')
+                if maturity:
+                    self.maturity_picker.value.set(str(maturity)[:10] if len(str(maturity)) > 10 else str(maturity))
+                else:
+                    self.maturity_picker.value.set("")
+            self.interest_rate_var.set(str(asset.get('InvestmentInterestRate', '')) if asset.get('InvestmentInterestRate') else '')
+        elif asset_type == 'Insurance Policy':
+            self.policy_number_var.set(asset.get('PolicyNumber', '') or '')
+            self.policy_type_var.set(asset.get('PolicyType', '') or '')
+            if hasattr(self, 'policy_start_date_picker'):
+                policy_start = asset.get('PolicyStartDate', '')
+                if policy_start:
+                    self.policy_start_date_picker.value.set(str(policy_start)[:10] if len(str(policy_start)) > 10 else str(policy_start))
+                else:
+                    self.policy_start_date_picker.value.set("")
+            if hasattr(self, 'policy_end_date_picker'):
+                policy_end = asset.get('PolicyEndDate', '')
+                if policy_end:
+                    self.policy_end_date_picker.value.set(str(policy_end)[:10] if len(str(policy_end)) > 10 else str(policy_end))
+                else:
+                    self.policy_end_date_picker.value.set("")
+            self.premium_amount_var.set(str(asset.get('PremiumAmount', '')) if asset.get('PremiumAmount') else '')
+        
+        # Common fields
         self.beneficiary_var.set(asset.get('BeneficiaryInfo', '') or '')
-        self.account_holder_var.set(asset.get('AccountHolderName', '') or '')
-        self.branch_var.set(asset.get('BranchLocation', '') or '')
         self.documentation_var.set(asset.get('Documentation', '') or '')
         self.notes_text.delete(1.0, tk.END)
         self.notes_text.insert(1.0, asset.get('Notes', '') or '')
@@ -564,22 +666,140 @@ class AssetsWindow:
         def on_save(asset_data):
             """Handle save from modal."""
             try:
-                # DB create
-                new_id = self.assets_model.create(asset_data)
-                # Audit
+                # Convert date strings to datetime objects if needed
+                account_opening_date = None
+                last_transaction_date = None
+                maturity_date = None
+                
+                if asset_data.get("AccountOpeningDate"):
+                    if isinstance(asset_data["AccountOpeningDate"], str):
+                        account_opening_date = datetime.datetime.strptime(asset_data["AccountOpeningDate"], "%Y-%m-%d").date()
+                    else:
+                        account_opening_date = asset_data["AccountOpeningDate"]
+                
+                if asset_data.get("LastTransactionDate"):
+                    if isinstance(asset_data["LastTransactionDate"], str):
+                        last_transaction_date = datetime.datetime.strptime(asset_data["LastTransactionDate"], "%Y-%m-%d").date()
+                    else:
+                        last_transaction_date = asset_data["LastTransactionDate"]
+                
+                if asset_data.get("MaturityDate"):
+                    if isinstance(asset_data["MaturityDate"], str):
+                        maturity_date = datetime.datetime.strptime(asset_data["MaturityDate"], "%Y-%m-%d").date()
+                    else:
+                        maturity_date = asset_data["MaturityDate"]
+                
+                # Get user ID for audit
                 user = get_current_user()
-                self.audit.write(
-                    user_id=user["UserId"] if user else None,
-                    action="CREATE",
-                    entity="Asset",
-                    entity_id=str(new_id),
-                    details=f"Created asset {asset_data['AssetType']}",
-                    ip=None
+                user_id = user["UserId"] if user else None
+                
+                # Get all detail table fields from asset_data
+                asset_type = asset_data["AssetType"]
+                
+                # Bank Account fields
+                account_status = asset_data.get("AccountStatus")
+                account_holder_name = asset_data.get("AccountHolderName")
+                branch_location = asset_data.get("BranchLocation")
+                currency = asset_data.get("Currency", "USD")
+                
+                # Vehicle fields
+                vehicle_make = asset_data.get("VehicleMake")
+                vehicle_model = asset_data.get("VehicleModel")
+                vehicle_year = asset_data.get("VehicleYear")
+                vehicle_vin = asset_data.get("VehicleVIN")
+                vehicle_registration = asset_data.get("VehicleRegistration")
+                vehicle_condition = asset_data.get("VehicleCondition")
+                vehicle_mileage = asset_data.get("VehicleMileage")
+                
+                # Real Estate fields
+                property_address = asset_data.get("PropertyAddress")
+                property_type = asset_data.get("PropertyType")
+                property_size = asset_data.get("PropertySize")
+                property_condition = asset_data.get("PropertyCondition")
+                property_tax_id = asset_data.get("PropertyTaxId")
+                
+                # Investment fields
+                investment_type = asset_data.get("InvestmentType")
+                
+                # Insurance Policy fields
+                policy_number = asset_data.get("PolicyNumber")
+                policy_type = asset_data.get("PolicyType")
+                policy_start_date = asset_data.get("PolicyStartDate")
+                policy_end_date = asset_data.get("PolicyEndDate")
+                premium_amount = asset_data.get("PremiumAmount")
+                
+                # Convert policy dates
+                policy_start_date_obj = None
+                policy_end_date_obj = None
+                if policy_start_date:
+                    if isinstance(policy_start_date, str):
+                        try:
+                            policy_start_date_obj = datetime.datetime.strptime(policy_start_date, "%Y-%m-%d").date()
+                        except ValueError:
+                            pass
+                    else:
+                        policy_start_date_obj = policy_start_date
+                if policy_end_date:
+                    if isinstance(policy_end_date, str):
+                        try:
+                            policy_end_date_obj = datetime.datetime.strptime(policy_end_date, "%Y-%m-%d").date()
+                        except ValueError:
+                            pass
+                    else:
+                        policy_end_date_obj = policy_end_date
+                
+                # DB create using stored procedure (audit is automatic)
+                success, new_id, error = db_ops.create_asset_with_validation(
+                    deceased_id=asset_data["DeceasedId"],
+                    institution_id=asset_data["InstitutionId"],
+                    asset_type=asset_type,
+                    identifier=asset_data.get("Identifier"),
+                    estimated_value=asset_data.get("EstimatedValue"),
+                    # Bank Account fields
+                    account_status=account_status,
+                    account_opening_date=account_opening_date,
+                    last_transaction_date=last_transaction_date,
+                    interest_rate=asset_data.get("InterestRate"),
+                    account_holder_name=account_holder_name,
+                    branch_location=branch_location,
+                    currency=currency,
+                    # Vehicle fields
+                    vehicle_make=vehicle_make,
+                    vehicle_model=vehicle_model,
+                    vehicle_year=vehicle_year,
+                    vehicle_vin=vehicle_vin,
+                    vehicle_registration=vehicle_registration,
+                    vehicle_condition=vehicle_condition,
+                    vehicle_mileage=vehicle_mileage,
+                    # Real Estate fields
+                    property_address=property_address,
+                    property_type=property_type,
+                    property_size=property_size,
+                    property_condition=property_condition,
+                    property_tax_id=property_tax_id,
+                    # Investment fields
+                    investment_type=investment_type,
+                    maturity_date=maturity_date,
+                    # Insurance Policy fields
+                    policy_number=policy_number,
+                    policy_type=policy_type,
+                    policy_start_date=policy_start_date_obj,
+                    policy_end_date=policy_end_date_obj,
+                    premium_amount=premium_amount,
+                    # Common fields
+                    beneficiary_info=asset_data.get("BeneficiaryInfo"),
+                    documentation=asset_data.get("Documentation"),
+                    notes=asset_data.get("Notes"),
+                    user_id=user_id
                 )
             
-                messagebox.showinfo("Success", "Asset added successfully.")
-                self._load_assets()
+                if success:
+                    messagebox.showinfo("Success", "Asset added successfully.")
+                    self._load_assets()
+                else:
+                    messagebox.showerror("Error", f"Failed to add asset: {error}")
             except Exception as e:
+                logger.error(f"Error creating asset: {e}", exc_info=True)
                 messagebox.showerror("Error", f"Failed to add asset: {e}")
         
         # Show modal
@@ -604,54 +824,152 @@ class AssetsWindow:
                 messagebox.showerror("Error", "Invalid selection for deceased person or institution.")
                 return
             
+            # Get asset type
+            asset_type = self.asset_type_var.get().strip()
+            
             # Get date values from date pickers
-            account_opening = self.account_opening_picker.get() if hasattr(self, 'account_opening_picker') else None
-            last_transaction = self.last_transaction_picker.get() if hasattr(self, 'last_transaction_picker') else None
-            maturity = self.maturity_picker.get() if hasattr(self, 'maturity_picker') else None
+            account_opening = None
+            last_transaction = None
+            maturity = None
+            policy_start = None
+            policy_end = None
+            
+            if hasattr(self, 'account_opening_picker'):
+                account_opening = self.account_opening_picker.get()
+            if hasattr(self, 'last_transaction_picker'):
+                last_transaction = self.last_transaction_picker.get()
+            if hasattr(self, 'maturity_picker'):
+                maturity = self.maturity_picker.get()
+            if hasattr(self, 'policy_start_date_picker'):
+                policy_start = self.policy_start_date_picker.get()
+            if hasattr(self, 'policy_end_date_picker'):
+                policy_end = self.policy_end_date_picker.get()
+            
             notes = self.notes_text.get(1.0, tk.END).strip()
-            interest_rate = self.interest_rate_var.get().strip()
             
-            # Prepare updated data
-            updated_data = {
-                "AssetId": self.current_asset["AssetId"],
-                "DeceasedId": deceased_id,
-                "InstitutionId": institution_id,
-                "AssetType": self.asset_type_var.get().strip(),
-                "Identifier": self.identifier_var.get().strip() or None,
-                "EstimatedValue": float(self.value_var.get()) if self.value_var.get().strip() else None,
-                "AccountStatus": self.account_status_var.get().strip() or None,
-                "AccountOpeningDate": account_opening if account_opening and account_opening != "YYYY-MM-DD" else None,
-                "LastTransactionDate": last_transaction if last_transaction and last_transaction != "YYYY-MM-DD" else None,
-                "InterestRate": float(interest_rate) if interest_rate else None,
-                "MaturityDate": maturity if maturity and maturity != "YYYY-MM-DD" else None,
-                "BeneficiaryInfo": self.beneficiary_var.get().strip() or None,
-                "AccountHolderName": self.account_holder_var.get().strip() or None,
-                "BranchLocation": self.branch_var.get().strip() or None,
-                "Currency": self.currency_var.get().strip() or "USD",
-                "Documentation": self.documentation_var.get().strip() or None,
-                "Notes": notes if notes else None
-            }
+            # Convert date strings to datetime objects if needed
+            account_opening_date = None
+            last_transaction_date = None
+            maturity_date = None
+            policy_start_date = None
+            policy_end_date = None
             
-            # Update asset in database
-            success = self.assets_model.update(updated_data["AssetId"], updated_data)
+            if account_opening and account_opening != "YYYY-MM-DD":
+                try:
+                    account_opening_date = datetime.datetime.strptime(account_opening, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            if last_transaction and last_transaction != "YYYY-MM-DD":
+                try:
+                    last_transaction_date = datetime.datetime.strptime(last_transaction, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            if maturity and maturity != "YYYY-MM-DD":
+                try:
+                    maturity_date = datetime.datetime.strptime(maturity, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            if policy_start and policy_start != "YYYY-MM-DD":
+                try:
+                    policy_start_date = datetime.datetime.strptime(policy_start, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            if policy_end and policy_end != "YYYY-MM-DD":
+                try:
+                    policy_end_date = datetime.datetime.strptime(policy_end, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            
+            # Get all field values based on asset type
+            # Bank Account fields
+            account_status = self.account_status_var.get().strip() or None if hasattr(self, 'account_status_var') else None
+            interest_rate = float(self.interest_rate_var.get().strip()) if hasattr(self, 'interest_rate_var') and self.interest_rate_var.get().strip() else None
+            account_holder_name = self.account_holder_var.get().strip() or None if hasattr(self, 'account_holder_var') else None
+            branch_location = self.branch_var.get().strip() or None if hasattr(self, 'branch_var') else None
+            currency = self.currency_var.get().strip() or "USD" if hasattr(self, 'currency_var') else "USD"
+            
+            # Vehicle fields
+            vehicle_make = self.vehicle_make_var.get().strip() or None if hasattr(self, 'vehicle_make_var') else None
+            vehicle_model = self.vehicle_model_var.get().strip() or None if hasattr(self, 'vehicle_model_var') else None
+            vehicle_year = int(self.vehicle_year_var.get().strip()) if hasattr(self, 'vehicle_year_var') and self.vehicle_year_var.get().strip() else None
+            vehicle_vin = self.vehicle_vin_var.get().strip() or None if hasattr(self, 'vehicle_vin_var') else None
+            vehicle_registration = self.vehicle_registration_var.get().strip() or None if hasattr(self, 'vehicle_registration_var') else None
+            vehicle_condition = self.vehicle_condition_var.get().strip() or None if hasattr(self, 'vehicle_condition_var') else None
+            vehicle_mileage = int(self.vehicle_mileage_var.get().strip()) if hasattr(self, 'vehicle_mileage_var') and self.vehicle_mileage_var.get().strip() else None
+            
+            # Real Estate fields
+            property_address = self.property_address_var.get().strip() or None if hasattr(self, 'property_address_var') else None
+            property_type = self.property_type_var.get().strip() or None if hasattr(self, 'property_type_var') else None
+            property_size = float(self.property_size_var.get().strip()) if hasattr(self, 'property_size_var') and self.property_size_var.get().strip() else None
+            property_condition = self.property_condition_var.get().strip() or None if hasattr(self, 'property_condition_var') else None
+            property_tax_id = self.property_tax_id_var.get().strip() or None if hasattr(self, 'property_tax_id_var') else None
+            
+            # Investment fields
+            investment_type = None  # Not in form yet, will be added
+            
+            # Insurance Policy fields
+            policy_number = self.policy_number_var.get().strip() or None if hasattr(self, 'policy_number_var') else None
+            policy_type = self.policy_type_var.get().strip() or None if hasattr(self, 'policy_type_var') else None
+            premium_amount = float(self.premium_amount_var.get().strip()) if hasattr(self, 'premium_amount_var') and self.premium_amount_var.get().strip() else None
+            
+            # Common fields
+            beneficiary_info = self.beneficiary_var.get().strip() or None if hasattr(self, 'beneficiary_var') else None
+            
+            # Get user ID for audit
+            user = get_current_user()
+            user_id = user["UserId"] if user else None
+            
+            # Update asset in database using stored procedure (audit is automatic)
+            success, error = db_ops.update_asset_record(
+                asset_id=self.current_asset["AssetId"],
+                deceased_id=deceased_id,
+                institution_id=institution_id,
+                asset_type=asset_type,
+                identifier=self.identifier_var.get().strip() or None,
+                estimated_value=float(self.value_var.get()) if self.value_var.get().strip() else None,
+                # Bank Account fields
+                account_status=account_status,
+                account_opening_date=account_opening_date,
+                last_transaction_date=last_transaction_date,
+                interest_rate=interest_rate,
+                account_holder_name=account_holder_name,
+                branch_location=branch_location,
+                currency=currency,
+                # Vehicle fields
+                vehicle_make=vehicle_make,
+                vehicle_model=vehicle_model,
+                vehicle_year=vehicle_year,
+                vehicle_vin=vehicle_vin,
+                vehicle_registration=vehicle_registration,
+                vehicle_condition=vehicle_condition,
+                vehicle_mileage=vehicle_mileage,
+                # Real Estate fields
+                property_address=property_address,
+                property_type=property_type,
+                property_size=property_size,
+                property_condition=property_condition,
+                property_tax_id=property_tax_id,
+                # Investment fields
+                investment_type=investment_type,
+                maturity_date=maturity_date,
+                # Insurance Policy fields
+                policy_number=policy_number,
+                policy_type=policy_type,
+                policy_start_date=policy_start_date,
+                policy_end_date=policy_end_date,
+                premium_amount=premium_amount,
+                # Common fields
+                beneficiary_info=beneficiary_info,
+                documentation=self.documentation_var.get().strip() or None,
+                notes=notes if notes else None,
+                user_id=user_id
+            )
             
             if success:
-                # Log audit entry
-                user = get_current_user()
-                if user:
-                    self.audit.write(
-                        user_id=user.get('UserId'),
-                        action='UPDATE',
-                        entity='Asset',
-                        entity_id=str(updated_data["AssetId"]),
-                        details=f"Updated asset: {updated_data['AssetType']}",
-                        ip=None
-                    )
-            
                 messagebox.showinfo("Success", "Asset updated successfully.")
                 self._load_assets()
             else:
-                messagebox.showerror("Error", "Failed to update asset. Asset may not exist.")
+                messagebox.showerror("Error", f"Failed to update asset: {error}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update asset: {e}")
@@ -668,28 +986,23 @@ class AssetsWindow:
             return
         
         try:
-            # Delete asset from database
+            # Get user ID for audit
+            user = get_current_user()
+            user_id = user["UserId"] if user else None
+            
+            # Delete asset from database using stored procedure (audit is automatic)
             asset_id = self.current_asset["AssetId"]
-            success = self.assets_model.delete(asset_id)
+            success, error = db_ops.delete_asset_record(
+                asset_id=asset_id,
+                user_id=user_id
+            )
             
             if success:
-                # Log audit entry
-                user = get_current_user()
-                if user:
-                    self.audit.write(
-                        user_id=user.get('UserId'),
-                        action='DELETE',
-                        entity='Asset',
-                        entity_id=str(asset_id),
-                        details=f"Deleted asset: {self.current_asset['AssetType']}",
-                        ip=None
-                    )
-            
                 messagebox.showinfo("Success", "Asset deleted successfully.")
                 self._clear_form()
                 self._load_assets()
             else:
-                messagebox.showerror("Error", "Failed to delete asset. Asset may not exist.")
+                messagebox.showerror("Error", f"Failed to delete asset: {error}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete asset: {e}")

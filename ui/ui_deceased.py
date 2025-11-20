@@ -17,9 +17,8 @@ from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 import datetime
 
-# Import database models
-from db.models_deceased import DeceasedModel
-from db.models_audit import AuditLogModel
+# Import database operations
+from db.db_operations import db_ops
 from auth.session import get_current_user
 from ui.theme import stripe_treeview
 from logging_config import get_logger
@@ -61,12 +60,9 @@ class DeceasedWindow:
         self.current_record: Optional[Dict[str, Any]] = None
         self.records: List[Dict[str, Any]] = []
         
-        # Initialize database models
-        self.model = DeceasedModel()
-        self.audit = AuditLogModel()
-        
         self._setup_ui()
-        self._load_records()
+        # Load records after UI is set up (use after() to ensure UI is ready)
+        self.window.after(100, self._load_records)
     
     def _setup_ui(self):
         """Create and layout the user interface components."""
@@ -320,8 +316,33 @@ class DeceasedWindow:
     def _load_records(self):
         """Load deceased records from database and populate the display."""
         try:
-            # Load from database
-            self.records = self.model.get_all()
+            # Load from database using stored procedure
+            records = db_ops.get_deceased_with_assets()
+            # Convert to expected format (map column names)
+            self.records = []
+            for row in records:
+                record = {
+                    "DeceasedId": row.get("DeceasedId"),
+                    "NationalId": row.get("NationalId"),
+                    "FirstName": row.get("FirstName"),
+                    "MiddleName": row.get("MiddleName"),
+                    "LastName": row.get("LastName"),
+                    "Gender": row.get("Gender"),
+                    "DateOfBirth": row.get("DateOfBirth"),
+                    "DateOfDeath": row.get("DateOfDeath"),
+                    "PlaceOfBirth": row.get("PlaceOfBirth"),
+                    "PlaceOfDeath": row.get("PlaceOfDeath"),
+                    "Address": row.get("Address"),
+                    "Occupation": row.get("Occupation"),
+                    "MaritalStatus": row.get("MaritalStatus"),
+                    "NextOfKin": row.get("NextOfKin"),
+                    "DeathCertificateNumber": row.get("DeathCertificateNumber"),
+                    "Notes": row.get("Notes"),
+                    "CreatedAt": row.get("CreatedAt"),
+                    "AssetCount": row.get("AssetCount", 0),
+                    "TotalAssetValue": row.get("TotalAssetValue", 0)
+                }
+                self.records.append(record)
             logger.info(f"Loaded {len(self.records)} deceased records from database")
             
             # Ensure records_container exists
@@ -535,22 +556,51 @@ class DeceasedWindow:
         def on_save(record_data):
             """Handle save from modal."""
             try:
-                # DB create
-                new_id = self.model.create(record_data)
-                # Audit
+                # Convert date strings to datetime objects if needed
+                date_of_birth = None
+                date_of_death = None
+                if record_data.get("DateOfBirth"):
+                    if isinstance(record_data["DateOfBirth"], str):
+                        date_of_birth = datetime.datetime.strptime(record_data["DateOfBirth"], "%Y-%m-%d").date()
+                    else:
+                        date_of_birth = record_data["DateOfBirth"]
+                if record_data.get("DateOfDeath"):
+                    if isinstance(record_data["DateOfDeath"], str):
+                        date_of_death = datetime.datetime.strptime(record_data["DateOfDeath"], "%Y-%m-%d").date()
+                    else:
+                        date_of_death = record_data["DateOfDeath"]
+                
+                # Get user ID for audit
                 user = get_current_user()
-                self.audit.write(
-                    user_id=user["UserId"] if user else None,
-                    action="CREATE",
-                    entity="Deceased",
-                    entity_id=str(new_id),
-                    details=f"Created deceased {record_data['FirstName']} {record_data['LastName']}",
-                    ip=None
+                user_id = user["UserId"] if user else None
+                
+                # DB create using stored procedure (audit is automatic)
+                success, new_id, error = db_ops.create_deceased_with_validation(
+                    first_name=record_data["FirstName"],
+                    last_name=record_data["LastName"],
+                    national_id=record_data.get("NationalId"),
+                    middle_name=record_data.get("MiddleName"),
+                    gender=record_data.get("Gender"),
+                    date_of_birth=date_of_birth,
+                    date_of_death=date_of_death,
+                    place_of_birth=record_data.get("PlaceOfBirth"),
+                    place_of_death=record_data.get("PlaceOfDeath"),
+                    address=record_data.get("Address"),
+                    occupation=record_data.get("Occupation"),
+                    marital_status=record_data.get("MaritalStatus"),
+                    next_of_kin=record_data.get("NextOfKin"),
+                    death_certificate_number=record_data.get("DeathCertificateNumber"),
+                    notes=record_data.get("Notes"),
+                    user_id=user_id
                 )
                 
-                messagebox.showinfo("Success", "Deceased record added successfully.")
-                self._load_records()
+                if success:
+                    messagebox.showinfo("Success", "Deceased record added successfully.")
+                    self._load_records()
+                else:
+                    messagebox.showerror("Error", f"Failed to add record: {error}")
             except Exception as e:
+                logger.error(f"Error creating deceased record: {e}", exc_info=True)
                 messagebox.showerror("Error", f"Failed to add record: {e}")
         
         # Show modal
@@ -568,40 +618,60 @@ class DeceasedWindow:
         
         try:
             # Get date values from date pickers
-            dob_value = self.dob_picker.get() if hasattr(self, 'dob_picker') else self.dob_var.get().strip() or None
-            dod_value = self.dod_picker.get() if hasattr(self, 'dod_picker') else self.dod_var.get().strip() or None
+            dob_str = self.dob_picker.get() if hasattr(self, 'dob_picker') else self.dob_var.get().strip() or None
+            dod_str = self.dod_picker.get() if hasattr(self, 'dod_picker') else self.dod_var.get().strip() or None
             
-            # Prepare updated data
+            # Convert date strings to datetime objects if needed
+            dob_value = None
+            dod_value = None
+            if dob_str and dob_str != "YYYY-MM-DD":
+                try:
+                    dob_value = datetime.datetime.strptime(dob_str, "%Y-%m-%d").date()
+                except ValueError:
+                    messagebox.showerror("Error", "Invalid Date of Birth format.")
+                    return
+            if dod_str and dod_str != "YYYY-MM-DD":
+                try:
+                    dod_value = datetime.datetime.strptime(dod_str, "%Y-%m-%d").date()
+                except ValueError:
+                    messagebox.showerror("Error", "Invalid Date of Death format.")
+                    return
+            
+            # Get user ID for audit
+            user = get_current_user()
+            user_id = user["UserId"] if user else None
+            
             notes = self.notes_text.get(1.0, tk.END).strip()
-            updated_data = {
-                "DeceasedId": self.current_record["DeceasedId"],
-                "NationalId": self.national_id_var.get().strip() or None,
-                "FirstName": self.first_name_var.get().strip(),
-                "MiddleName": self.middle_name_var.get().strip() or None,
-                "LastName": self.last_name_var.get().strip(),
-                "Gender": self.gender_var.get().strip() or None,
-                "DateOfBirth": dob_value,
-                "DateOfDeath": dod_value,
-                "PlaceOfBirth": self.place_of_birth_var.get().strip() or None,
-                "PlaceOfDeath": self.place_of_death_var.get().strip() or None,
-                "Address": self.address_var.get().strip() or None,
-                "Occupation": self.occupation_var.get().strip() or None,
-                "MaritalStatus": self.marital_status_var.get().strip() or None,
-                "NextOfKin": self.next_of_kin_var.get().strip() or None,
-                "DeathCertificateNumber": self.death_cert_var.get().strip() or None,
-                "Notes": notes if notes else None
-            }
             
-            # DB update
-            ok = self.model.update(updated_data["DeceasedId"], updated_data)
-            if ok:
-                user = get_current_user()
-                self.audit.write(user_id=user["UserId"] if user else None, action="UPDATE", entity="Deceased", entity_id=str(updated_data["DeceasedId"]), details="Updated deceased record", ip=None)
+            # DB update using stored procedure (audit is automatic)
+            success, error = db_ops.update_deceased_record(
+                deceased_id=self.current_record["DeceasedId"],
+                first_name=self.first_name_var.get().strip(),
+                last_name=self.last_name_var.get().strip(),
+                national_id=self.national_id_var.get().strip() or None,
+                middle_name=self.middle_name_var.get().strip() or None,
+                gender=self.gender_var.get().strip() or None,
+                date_of_birth=dob_value,
+                date_of_death=dod_value,
+                place_of_birth=self.place_of_birth_var.get().strip() or None,
+                place_of_death=self.place_of_death_var.get().strip() or None,
+                address=self.address_var.get().strip() or None,
+                occupation=self.occupation_var.get().strip() or None,
+                marital_status=self.marital_status_var.get().strip() or None,
+                next_of_kin=self.next_of_kin_var.get().strip() or None,
+                death_certificate_number=self.death_cert_var.get().strip() or None,
+                notes=notes if notes else None,
+                user_id=user_id
+            )
             
-            messagebox.showinfo("Success", "Record updated successfully.")
-            self._load_records()
+            if success:
+                messagebox.showinfo("Success", "Record updated successfully.")
+                self._load_records()
+            else:
+                messagebox.showerror("Error", f"Failed to update record: {error}")
             
         except Exception as e:
+            logger.error(f"Error updating deceased record: {e}", exc_info=True)
             messagebox.showerror("Error", f"Failed to update record: {e}")
     
     def _delete_record(self):
@@ -616,17 +686,25 @@ class DeceasedWindow:
             return
         
         try:
-            # DB delete
-            ok = self.model.delete(self.current_record["DeceasedId"])
-            if ok:
-                user = get_current_user()
-                self.audit.write(user_id=user["UserId"] if user else None, action="DELETE", entity="Deceased", entity_id=str(self.current_record["DeceasedId"]), details=f"Deleted {name}", ip=None)
+            # Get user ID for audit
+            user = get_current_user()
+            user_id = user["UserId"] if user else None
             
-            messagebox.showinfo("Success", "Record deleted successfully.")
-            self._clear_form()
-            self._load_records()
+            # DB delete using stored procedure (audit is automatic)
+            success, error = db_ops.delete_deceased_record(
+                deceased_id=self.current_record["DeceasedId"],
+                user_id=user_id
+            )
+            
+            if success:
+                messagebox.showinfo("Success", "Record deleted successfully.")
+                self._clear_form()
+                self._load_records()
+            else:
+                messagebox.showerror("Error", f"Failed to delete record: {error}")
             
         except Exception as e:
+            logger.error(f"Error deleting deceased record: {e}", exc_info=True)
             messagebox.showerror("Error", f"Failed to delete record: {e}")
     
     def _clear_form(self):

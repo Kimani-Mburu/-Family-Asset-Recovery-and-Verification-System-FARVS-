@@ -18,12 +18,11 @@ from tkinter import ttk, messagebox
 from typing import Optional, List, Dict, Any
 import datetime
 
-# Import database models
-from db.models_claims import ClaimsModel
-from db.models_claimants import ClaimantsModel
-from db.models_assets import AssetsModel
+# Import database operations
+from db.db_operations import db_ops
+from db.models_claimants import ClaimantsModel  # Still used for get_all() - no stored procedure
+from db.models_assets import AssetsModel  # Still used for get_all_with_details() - for dropdowns
 from db.models_cases import CasesModel, TasksModel, StatusHistoryModel
-from db.models_audit import AuditLogModel
 from auth.session import get_current_user
 from ui.theme import stripe_treeview
 from logging_config import get_logger
@@ -69,14 +68,12 @@ class ClaimsWindow:
         self.claimants: List[Dict[str, Any]] = []
         self.assets: List[Dict[str, Any]] = []
         
-        # Initialize database models
-        self.claims_model = ClaimsModel()
-        self.claimants_model = ClaimantsModel()
-        self.assets_model = AssetsModel()
+        # Initialize database models (for dropdowns and cases/tasks)
+        self.claimants_model = ClaimantsModel()  # Still used for get_all()
+        self.assets_model = AssetsModel()  # Still used for get_all_with_details() for dropdowns
         self.cases_model = CasesModel()
         self.tasks_model = TasksModel()
         self.status_history = StatusHistoryModel()
-        self.audit = AuditLogModel()
         
         self._setup_ui()
         self._load_data()
@@ -123,13 +120,18 @@ class ClaimsWindow:
     
     def _setup_claims_tab(self, parent: ttk.Frame):
         """Setup the claims management tab with progress tracking."""
-        # Main container
-        main_frame = ttk.Frame(parent, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Use ScrollableFrame for the entire tab
+        from ui.scrollable_frame import ScrollableFrame
+        scrollable = ScrollableFrame(parent)
+        scrollable.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configure grid weights
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
+        
+        # Main container inside scrollable frame
+        main_frame = scrollable.inner_frame
+        main_frame.configure(padding="10")
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(1, weight=1)
         
@@ -660,8 +662,28 @@ class ClaimsWindow:
     def _load_claims(self):
         """Load claims from database and populate the treeview."""
         try:
-            # Load from DB first
-            self.claims = self.claims_model.get_all_with_details()
+            # Load from DB using stored procedure/view
+            records = db_ops.get_claims_detailed()
+            # Convert to expected format (map column names)
+            self.claims = []
+            for row in records:
+                claim = {
+                    "ClaimId": row.get("ClaimId"),
+                    "AssetId": row.get("AssetId"),
+                    "ClaimantId": row.get("ClaimantId"),
+                    "Status": row.get("Status"),
+                    "FiledAt": row.get("FiledAt"),
+                    "VerifiedAt": row.get("VerifiedAt"),
+                    "SettledAt": row.get("SettledAt"),
+                    "Notes": row.get("Notes"),
+                    "AssetName": row.get("AssetName") or row.get("AssetType", ""),
+                    "ClaimantName": row.get("ClaimantName") or f"{row.get('ClaimantFirstName', '')} {row.get('ClaimantLastName', '')}",
+                    "DeceasedName": row.get("DeceasedName") or f"{row.get('DeceasedFirstName', '')} {row.get('DeceasedLastName', '')}",
+                    "InstitutionName": row.get("InstitutionName"),
+                    "AssetType": row.get("AssetType"),
+                    "EstimatedValue": row.get("EstimatedValue")
+                }
+                self.claims.append(claim)
             logger.info(f"Loaded {len(self.claims)} claims from database")
             
             # Ensure claims_container exists before trying to refresh
@@ -1070,21 +1092,53 @@ class ClaimsWindow:
                 "Notes": self.notes_text.get(1.0, tk.END).strip()
             }
             
-            # DB create
-            new_id = self.claims_model.create(claim_data)
-            # Create a case and initial task
+            # Get user ID for audit
             user = get_current_user()
-            case_id = self.cases_model.create(title=f"Claim #{new_id}", description=claim_data["Notes"], claim_id=new_id, created_by_user_id=(user["UserId"] if user else None))
-            self.tasks_model.add(case_id=case_id, title="Initial review", status="Pending", assigned_to_user_id=(user["UserId"] if user else None))
-            # Audit and status history
-            self.status_history.add(entity_type="Claim", entity_id=new_id, status=claim_data["Status"], notes="Claim created", changed_by_user_id=(user["UserId"] if user else None))
-            self.audit.write(user_id=(user["UserId"] if user else None), action="CREATE", entity="Claim", entity_id=str(new_id), details=f"Created claim for asset {asset_id} by claimant {claimant_id}", ip=None)
+            user_id = user["UserId"] if user else None
+            
+            # DB create using stored procedure (audit is automatic)
+            success, new_id, error = db_ops.create_claim_with_validation(
+                asset_id=asset_id,
+                claimant_id=claimant_id,
+                status=claim_data["Status"],
+                notes=claim_data["Notes"] if claim_data["Notes"] else None,
+                user_id=user_id
+            )
+            
+            if not success:
+                messagebox.showerror("Error", f"Failed to create claim: {error}")
+                return
+            
+            # Create a case and initial task
+            case_id = self.cases_model.create(title=f"Claim #{new_id}", description=claim_data["Notes"], claim_id=new_id, created_by_user_id=user_id)
+            self.tasks_model.add(case_id=case_id, title="Initial review", status="Pending", assigned_to_user_id=user_id)
+            # Status history
+            self.status_history.add(entity_type="Claim", entity_id=new_id, status=claim_data["Status"], notes="Claim created", changed_by_user_id=user_id)
             
             messagebox.showinfo("Success", "Claim added successfully.")
             
             # Load the newly created claim to show progress
-            updated_claims = self.claims_model.get_all_with_details()
-            new_claim = next((c for c in updated_claims if c["ClaimId"] == new_id), None)
+            updated_records = db_ops.get_claims_detailed()
+            new_claim = None
+            for row in updated_records:
+                if row.get("ClaimId") == new_id:
+                    new_claim = {
+                        "ClaimId": row.get("ClaimId"),
+                        "AssetId": row.get("AssetId"),
+                        "ClaimantId": row.get("ClaimantId"),
+                        "Status": row.get("Status"),
+                        "FiledAt": row.get("FiledAt"),
+                        "VerifiedAt": row.get("VerifiedAt"),
+                        "SettledAt": row.get("SettledAt"),
+                        "Notes": row.get("Notes"),
+                        "AssetName": row.get("AssetName") or row.get("AssetType", ""),
+                        "ClaimantName": row.get("ClaimantName") or f"{row.get('ClaimantFirstName', '')} {row.get('ClaimantLastName', '')}",
+                        "DeceasedName": row.get("DeceasedName") or f"{row.get('DeceasedFirstName', '')} {row.get('DeceasedLastName', '')}",
+                        "InstitutionName": row.get("InstitutionName"),
+                        "AssetType": row.get("AssetType"),
+                        "EstimatedValue": row.get("EstimatedValue")
+                    }
+                    break
             if new_claim:
                 self.current_claim = new_claim
                 self._populate_claim_form(new_claim)
@@ -1104,22 +1158,46 @@ class ClaimsWindow:
         def on_save(claimant_data):
             """Handle save from modal."""
             try:
-                # DB create
-                new_id = self.claimants_model.create(claimant_data)
-                # Audit
+                # Convert date string to datetime object if needed
+                date_of_birth = None
+                if claimant_data.get("DateOfBirth"):
+                    if isinstance(claimant_data["DateOfBirth"], str):
+                        date_of_birth = datetime.datetime.strptime(claimant_data["DateOfBirth"], "%Y-%m-%d").date()
+                    else:
+                        date_of_birth = claimant_data["DateOfBirth"]
+                
+                # Get user ID for audit
                 user = get_current_user()
-                self.audit.write(
-                    user_id=user["UserId"] if user else None,
-                    action="CREATE",
-                    entity="Claimant",
-                    entity_id=str(new_id),
-                    details=f"Created claimant {claimant_data['FirstName']} {claimant_data['LastName']}",
-                    ip=None
+                user_id = user["UserId"] if user else None
+                
+                # DB create using stored procedure (audit is automatic)
+                success, new_id, error = db_ops.create_claimant_with_validation(
+                    first_name=claimant_data["FirstName"],
+                    last_name=claimant_data["LastName"],
+                    national_id=claimant_data.get("NationalId"),
+                    middle_name=claimant_data.get("MiddleName"),
+                    date_of_birth=date_of_birth,
+                    gender=claimant_data.get("Gender"),
+                    relationship=claimant_data.get("Relationship"),
+                    contact=claimant_data.get("Contact"),
+                    email=claimant_data.get("Email"),
+                    phone=claimant_data.get("Phone"),
+                    address=claimant_data.get("Address"),
+                    occupation=claimant_data.get("Occupation"),
+                    marital_status=claimant_data.get("MaritalStatus"),
+                    alternate_contact=claimant_data.get("AlternateContact"),
+                    relationship_proof=claimant_data.get("RelationshipProof"),
+                    notes=claimant_data.get("Notes"),
+                    user_id=user_id
                 )
                 
-                messagebox.showinfo("Success", "Claimant added successfully.")
-                self._load_claimants()
+                if success:
+                    messagebox.showinfo("Success", "Claimant added successfully.")
+                    self._load_claimants()
+                else:
+                    messagebox.showerror("Error", f"Failed to add claimant: {error}")
             except Exception as e:
+                logger.error(f"Error creating claimant: {e}", exc_info=True)
                 messagebox.showerror("Error", f"Failed to add claimant: {e}")
         
         # Show modal
@@ -1154,13 +1232,14 @@ class ClaimsWindow:
             
             # Update claim status using stored procedure (with transaction and audit)
             user = get_current_user()
+            user_id = user["UserId"] if user else None
             notes_text = self.notes_text.get(1.0, tk.END).strip()
-            logger.debug(f"Calling update_status with claim_id={updated_data['ClaimId']}, status={updated_data['Status']}")
-            success, error = self.claims_model.update_status(
+            logger.debug(f"Calling update_claim_status with claim_id={updated_data['ClaimId']}, status={updated_data['Status']}")
+            success, error = db_ops.update_claim_status(
                 claim_id=updated_data["ClaimId"],
-                status=updated_data["Status"],
+                new_status=updated_data["Status"],
                 notes=notes_text if notes_text else None,
-                use_stored_procedure=False  # Use direct UPDATE to avoid stored procedure issues
+                user_id=user_id
             )
             
             logger.debug(f"Update result: success={success}, error={error}")
@@ -1172,8 +1251,27 @@ class ClaimsWindow:
                 if self.current_claim:
                     claim_id = self.current_claim["ClaimId"]
                     # Get fresh data from database
-                    updated_claims = self.claims_model.get_all_with_details()
-                    self.current_claim = next((c for c in updated_claims if c["ClaimId"] == claim_id), None)
+                    updated_records = db_ops.get_claims_detailed()
+                    self.current_claim = None
+                    for row in updated_records:
+                        if row.get("ClaimId") == claim_id:
+                            self.current_claim = {
+                                "ClaimId": row.get("ClaimId"),
+                                "AssetId": row.get("AssetId"),
+                                "ClaimantId": row.get("ClaimantId"),
+                                "Status": row.get("Status"),
+                                "FiledAt": row.get("FiledAt"),
+                                "VerifiedAt": row.get("VerifiedAt"),
+                                "SettledAt": row.get("SettledAt"),
+                                "Notes": row.get("Notes"),
+                                "AssetName": row.get("AssetName") or row.get("AssetType", ""),
+                                "ClaimantName": row.get("ClaimantName") or f"{row.get('ClaimantFirstName', '')} {row.get('ClaimantLastName', '')}",
+                                "DeceasedName": row.get("DeceasedName") or f"{row.get('DeceasedFirstName', '')} {row.get('DeceasedLastName', '')}",
+                                "InstitutionName": row.get("InstitutionName"),
+                                "AssetType": row.get("AssetType"),
+                                "EstimatedValue": row.get("EstimatedValue")
+                            }
+                            break
                     if self.current_claim:
                         logger.debug(f"Refreshed claim data: Status={self.current_claim.get('Status')}, FiledAt={self.current_claim.get('FiledAt')}, VerifiedAt={self.current_claim.get('VerifiedAt')}, SettledAt={self.current_claim.get('SettledAt')}")
                         # CRITICAL: Update status_var first to match database
@@ -1204,41 +1302,51 @@ class ClaimsWindow:
         
         try:
             # Get date value from date picker
-            dob_value = self.claimant_dob_picker.get() if hasattr(self, 'claimant_dob_picker') else self.claimant_dob_var.get().strip() or None
-            if dob_value and dob_value != "YYYY-MM-DD":
-                dob_value = dob_value
-            else:
-                dob_value = None
+            dob_str = self.claimant_dob_picker.get() if hasattr(self, 'claimant_dob_picker') else self.claimant_dob_var.get().strip() or None
             notes = self.claimant_notes_text.get(1.0, tk.END).strip()
             
-            # Prepare updated data
-            updated_data = {
-                "ClaimantId": self.current_claimant["ClaimantId"],
-                "NationalId": self.claimant_national_id_var.get().strip() or None,
-                "FirstName": self.claimant_first_name_var.get().strip(),
-                "MiddleName": self.claimant_middle_name_var.get().strip() or None,
-                "LastName": self.claimant_last_name_var.get().strip(),
-                "DateOfBirth": dob_value,
-                "Gender": self.claimant_gender_var.get().strip() or None,
-                "Relationship": self.relationship_var.get().strip() or None,
-                "Contact": self.contact_var.get().strip() or None,
-                "Email": self.claimant_email_var.get().strip() or None,
-                "Phone": self.claimant_phone_var.get().strip() or None,
-                "Address": self.claimant_address_var.get().strip() or None,
-                "Occupation": self.claimant_occupation_var.get().strip() or None,
-                "MaritalStatus": self.claimant_marital_status_var.get().strip() or None,
-                "AlternateContact": self.claimant_alternate_contact_var.get().strip() or None,
-                "RelationshipProof": self.claimant_relationship_proof_var.get().strip() or None,
-                "Notes": notes if notes else None
-            }
+            # Convert date string to datetime object if needed
+            dob_value = None
+            if dob_str and dob_str != "YYYY-MM-DD":
+                try:
+                    dob_value = datetime.datetime.strptime(dob_str, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
             
-            # DB update
-            self.claimants_model.update(updated_data["ClaimantId"], updated_data)
+            # Get user ID for audit
             user = get_current_user()
-            self.audit.write(user_id=(user["UserId"] if user else None), action="UPDATE", entity="Claimant", entity_id=str(updated_data["ClaimantId"]), details="Updated claimant", ip=None)
+            user_id = user["UserId"] if user else None
             
-            messagebox.showinfo("Success", "Claimant updated successfully.")
-            self._load_claimants()
+            # Get data from form fields
+            claimant_id = self.current_claimant["ClaimantId"]
+            
+            # DB update using stored procedure (audit is automatic)
+            success, error = db_ops.update_claimant_record(
+                claimant_id=claimant_id,
+                first_name=self.claimant_first_name_var.get().strip(),
+                last_name=self.claimant_last_name_var.get().strip(),
+                national_id=self.claimant_national_id_var.get().strip() or None,
+                middle_name=self.claimant_middle_name_var.get().strip() or None,
+                date_of_birth=dob_value,
+                gender=self.claimant_gender_var.get().strip() or None,
+                relationship=self.relationship_var.get().strip() or None,
+                contact=self.contact_var.get().strip() or None,
+                email=self.claimant_email_var.get().strip() or None,
+                phone=self.claimant_phone_var.get().strip() or None,
+                address=self.claimant_address_var.get().strip() or None,
+                occupation=self.claimant_occupation_var.get().strip() or None,
+                marital_status=self.claimant_marital_status_var.get().strip() or None,
+                alternate_contact=self.claimant_alternate_contact_var.get().strip() or None,
+                relationship_proof=self.claimant_relationship_proof_var.get().strip() or None,
+                notes=notes if notes else None,
+                user_id=user_id
+            )
+            
+            if success:
+                messagebox.showinfo("Success", "Claimant updated successfully.")
+                self._load_claimants()
+            else:
+                messagebox.showerror("Error", f"Failed to update claimant: {error}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update claimant: {e}")
@@ -1255,17 +1363,35 @@ class ClaimsWindow:
             return
         
         try:
-            # DB delete
+            # Note: There's no stored procedure for claim deletion yet
+            # For now, we'll use direct SQL deletion
+            from db.db_connect import get_connection
+            
             claim_id = self.current_claim["ClaimId"]
-            self.claims_model.delete(claim_id)
             user = get_current_user()
-            self.audit.write(user_id=(user["UserId"] if user else None), action="DELETE", entity="Claim", entity_id=str(claim_id), details="Deleted claim", ip=None)
+            user_id = user["UserId"] if user else None
+            
+            # Delete claim using direct SQL (stored procedure can be added later)
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                # Delete associated status history first
+                cursor.execute("DELETE FROM StatusHistory WHERE EntityType = 'Claim' AND EntityId = ?", (claim_id,))
+                # Delete the claim
+                cursor.execute("DELETE FROM Claims WHERE ClaimId = ?", (claim_id,))
+                # Log audit
+                if user_id:
+                    cursor.execute("""
+                        INSERT INTO AuditLog (UserId, Action, Entity, EntityId, Details)
+                        VALUES (?, 'DELETE', 'Claim', ?, 'Deleted claim')
+                    """, (user_id, str(claim_id)))
+                conn.commit()
             
             messagebox.showinfo("Success", "Claim deleted successfully.")
             self._clear_claim_form()
             self._load_claims()
             
         except Exception as e:
+            logger.error(f"Error deleting claim: {e}", exc_info=True)
             messagebox.showerror("Error", f"Failed to delete claim: {e}")
     
     def _delete_claimant(self):
@@ -1286,28 +1412,23 @@ class ClaimsWindow:
             return
         
         try:
-            # Delete claimant from database
+            # Get user ID for audit
+            user = get_current_user()
+            user_id = user["UserId"] if user else None
+            
+            # Delete claimant from database using stored procedure (audit is automatic)
             claimant_id = self.current_claimant["ClaimantId"]
-            success = self.claimants_model.delete(claimant_id)
+            success, error = db_ops.delete_claimant_record(
+                claimant_id=claimant_id,
+                user_id=user_id
+            )
             
             if success:
-                # Log audit entry
-                user = get_current_user()
-                if user:
-                    self.audit.write(
-                        user_id=user.get('UserId'),
-                        action='DELETE',
-                        entity='Claimant',
-                        entity_id=str(claimant_id),
-                        details=f"Deleted claimant: {claimant_name}",
-                        ip=None
-                    )
-                
                 messagebox.showinfo("Success", "Claimant deleted successfully.")
                 self._clear_claimant_form()
                 self._load_claimants()
             else:
-                messagebox.showerror("Error", "Failed to delete claimant. Claimant may have associated claims.")
+                messagebox.showerror("Error", f"Failed to delete claimant: {error}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete claimant: {e}")
