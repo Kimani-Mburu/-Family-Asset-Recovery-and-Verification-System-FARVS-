@@ -61,18 +61,29 @@ class DeceasedModel:
         
         # Prepare SQL query
         query = """
-        INSERT INTO Deceased (NationalId, FirstName, LastName, DateOfBirth, DateOfDeath)
+        INSERT INTO Deceased (NationalId, FirstName, MiddleName, LastName, Gender, DateOfBirth, DateOfDeath,
+            PlaceOfBirth, PlaceOfDeath, Address, Occupation, MaritalStatus, NextOfKin, DeathCertificateNumber, Notes)
         OUTPUT INSERTED.DeceasedId
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
         # Prepare parameters
         params = (
             data.get('NationalId'),
             data['FirstName'],
+            data.get('MiddleName'),
             data['LastName'],
+            data.get('Gender'),
             data.get('DateOfBirth'),
-            data.get('DateOfDeath')
+            data.get('DateOfDeath'),
+            data.get('PlaceOfBirth'),
+            data.get('PlaceOfDeath'),
+            data.get('Address'),
+            data.get('Occupation'),
+            data.get('MaritalStatus'),
+            data.get('NextOfKin'),
+            data.get('DeathCertificateNumber'),
+            data.get('Notes')
         )
         
         try:
@@ -99,7 +110,8 @@ class DeceasedModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT DeceasedId, NationalId, FirstName, LastName, DateOfBirth, DateOfDeath, CreatedAt
+        SELECT DeceasedId, NationalId, FirstName, MiddleName, LastName, Gender, DateOfBirth, DateOfDeath,
+            PlaceOfBirth, PlaceOfDeath, Address, Occupation, MaritalStatus, NextOfKin, DeathCertificateNumber, Notes, CreatedAt
         FROM Deceased
         WHERE DeceasedId = ?
         """
@@ -115,10 +127,20 @@ class DeceasedModel:
                         'DeceasedId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'DateOfBirth': row[4],
-                        'DateOfDeath': row[5],
-                        'CreatedAt': row[6]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'Gender': row[5],
+                        'DateOfBirth': row[6],
+                        'DateOfDeath': row[7],
+                        'PlaceOfBirth': row[8],
+                        'PlaceOfDeath': row[9],
+                        'Address': row[10],
+                        'Occupation': row[11],
+                        'MaritalStatus': row[12],
+                        'NextOfKin': row[13],
+                        'DeathCertificateNumber': row[14],
+                        'Notes': row[15],
+                        'CreatedAt': row[16]
                     }
                 return None
                 
@@ -136,7 +158,8 @@ class DeceasedModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT DeceasedId, NationalId, FirstName, LastName, DateOfBirth, DateOfDeath, CreatedAt
+        SELECT DeceasedId, NationalId, FirstName, MiddleName, LastName, Gender, DateOfBirth, DateOfDeath,
+            PlaceOfBirth, PlaceOfDeath, Address, Occupation, MaritalStatus, NextOfKin, DeathCertificateNumber, Notes, CreatedAt
         FROM Deceased
         ORDER BY LastName, FirstName
         """
@@ -153,10 +176,20 @@ class DeceasedModel:
                         'DeceasedId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'DateOfBirth': row[4],
-                        'DateOfDeath': row[5],
-                        'CreatedAt': row[6]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'Gender': row[5],
+                        'DateOfBirth': row[6],
+                        'DateOfDeath': row[7],
+                        'PlaceOfBirth': row[8],
+                        'PlaceOfDeath': row[9],
+                        'Address': row[10],
+                        'Occupation': row[11],
+                        'MaritalStatus': row[12],
+                        'NextOfKin': row[13],
+                        'DeathCertificateNumber': row[14],
+                        'Notes': row[15],
+                        'CreatedAt': row[16]
                     })
                 
                 return records
@@ -178,9 +211,10 @@ class DeceasedModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT DeceasedId, NationalId, FirstName, LastName, DateOfBirth, DateOfDeath, CreatedAt
+        SELECT DeceasedId, NationalId, FirstName, MiddleName, LastName, Gender, DateOfBirth, DateOfDeath,
+            PlaceOfBirth, PlaceOfDeath, Address, Occupation, MaritalStatus, NextOfKin, DeathCertificateNumber, Notes, CreatedAt
         FROM Deceased
-        WHERE FirstName LIKE ? OR LastName LIKE ? OR NationalId LIKE ?
+        WHERE FirstName LIKE ? OR LastName LIKE ? OR NationalId LIKE ? OR MiddleName LIKE ?
         ORDER BY LastName, FirstName
         """
         
@@ -189,7 +223,7 @@ class DeceasedModel:
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(query, (search_pattern, search_pattern, search_pattern))
+                cursor.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern))
                 rows = cursor.fetchall()
                 
                 records = []
@@ -198,10 +232,20 @@ class DeceasedModel:
                         'DeceasedId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'DateOfBirth': row[4],
-                        'DateOfDeath': row[5],
-                        'CreatedAt': row[6]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'Gender': row[5],
+                        'DateOfBirth': row[6],
+                        'DateOfDeath': row[7],
+                        'PlaceOfBirth': row[8],
+                        'PlaceOfDeath': row[9],
+                        'Address': row[10],
+                        'Occupation': row[11],
+                        'MaritalStatus': row[12],
+                        'NextOfKin': row[13],
+                        'DeathCertificateNumber': row[14],
+                        'Notes': row[15],
+                        'CreatedAt': row[16]
                     })
                 
                 return records
@@ -233,7 +277,10 @@ class DeceasedModel:
         # Prepare SQL query
         query = """
         UPDATE Deceased
-        SET NationalId = ?, FirstName = ?, LastName = ?, DateOfBirth = ?, DateOfDeath = ?
+        SET NationalId = ?, FirstName = ?, MiddleName = ?, LastName = ?, Gender = ?,
+            DateOfBirth = ?, DateOfDeath = ?, PlaceOfBirth = ?, PlaceOfDeath = ?,
+            Address = ?, Occupation = ?, MaritalStatus = ?, NextOfKin = ?,
+            DeathCertificateNumber = ?, Notes = ?
         WHERE DeceasedId = ?
         """
         
@@ -241,9 +288,19 @@ class DeceasedModel:
         params = (
             data.get('NationalId'),
             data['FirstName'],
+            data.get('MiddleName'),
             data['LastName'],
+            data.get('Gender'),
             data.get('DateOfBirth'),
             data.get('DateOfDeath'),
+            data.get('PlaceOfBirth'),
+            data.get('PlaceOfDeath'),
+            data.get('Address'),
+            data.get('Occupation'),
+            data.get('MaritalStatus'),
+            data.get('NextOfKin'),
+            data.get('DeathCertificateNumber'),
+            data.get('Notes'),
             deceased_id
         )
         

@@ -63,9 +63,11 @@ class AssetsModel:
         
         # Prepare SQL query
         query = """
-        INSERT INTO Assets (DeceasedId, InstitutionId, AssetType, Identifier, EstimatedValue)
+        INSERT INTO Assets (DeceasedId, InstitutionId, AssetType, Identifier, EstimatedValue,
+            AccountStatus, AccountOpeningDate, LastTransactionDate, InterestRate, MaturityDate,
+            BeneficiaryInfo, AccountHolderName, BranchLocation, Currency, Documentation, Notes)
         OUTPUT INSERTED.AssetId
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
         # Prepare parameters
@@ -74,7 +76,18 @@ class AssetsModel:
             data['InstitutionId'],
             data['AssetType'],
             data.get('Identifier'),
-            data.get('EstimatedValue')
+            data.get('EstimatedValue'),
+            data.get('AccountStatus'),
+            data.get('AccountOpeningDate'),
+            data.get('LastTransactionDate'),
+            data.get('InterestRate'),
+            data.get('MaturityDate'),
+            data.get('BeneficiaryInfo'),
+            data.get('AccountHolderName'),
+            data.get('BranchLocation'),
+            data.get('Currency', 'USD'),
+            data.get('Documentation'),
+            data.get('Notes')
         )
         
         try:
@@ -102,7 +115,9 @@ class AssetsModel:
         """
         query = """
         SELECT a.AssetId, a.DeceasedId, a.InstitutionId, a.AssetType, a.Identifier, 
-               a.EstimatedValue, a.CreatedAt,
+               a.EstimatedValue, a.AccountStatus, a.AccountOpeningDate, a.LastTransactionDate,
+               a.InterestRate, a.MaturityDate, a.BeneficiaryInfo, a.AccountHolderName,
+               a.BranchLocation, a.Currency, a.Documentation, a.Notes, a.CreatedAt,
                d.FirstName, d.LastName,
                i.Name as InstitutionName, i.Type as InstitutionType
         FROM Assets a
@@ -125,10 +140,21 @@ class AssetsModel:
                         'AssetType': row[3],
                         'Identifier': row[4],
                         'EstimatedValue': row[5],
-                        'CreatedAt': row[6],
-                        'DeceasedName': f"{row[7]} {row[8]}",
-                        'InstitutionName': row[9],
-                        'InstitutionType': row[10]
+                        'AccountStatus': row[6],
+                        'AccountOpeningDate': row[7],
+                        'LastTransactionDate': row[8],
+                        'InterestRate': row[9],
+                        'MaturityDate': row[10],
+                        'BeneficiaryInfo': row[11],
+                        'AccountHolderName': row[12],
+                        'BranchLocation': row[13],
+                        'Currency': row[14],
+                        'Documentation': row[15],
+                        'Notes': row[16],
+                        'CreatedAt': row[17],
+                        'DeceasedName': f"{row[18]} {row[19]}",
+                        'InstitutionName': row[20],
+                        'InstitutionType': row[21]
                     }
                 return None
                 
@@ -147,7 +173,7 @@ class AssetsModel:
         """
         query = """
         SELECT a.AssetId, a.DeceasedId, a.InstitutionId, a.AssetType, a.Identifier, 
-               a.EstimatedValue, a.CreatedAt,
+               a.EstimatedValue, a.AccountStatus, a.Currency, a.Notes, a.CreatedAt,
                d.FirstName, d.LastName,
                i.Name as InstitutionName, i.Type as InstitutionType
         FROM Assets a
@@ -171,10 +197,13 @@ class AssetsModel:
                         'AssetType': row[3],
                         'Identifier': row[4],
                         'EstimatedValue': row[5],
-                        'CreatedAt': row[6],
-                        'DeceasedName': f"{row[7]} {row[8]}",
-                        'InstitutionName': row[9],
-                        'InstitutionType': row[10]
+                        'AccountStatus': row[6],
+                        'Currency': row[7],
+                        'Notes': row[8],
+                        'CreatedAt': row[9],
+                        'DeceasedName': f"{row[10]} {row[11]}",
+                        'InstitutionName': row[12],
+                        'InstitutionType': row[13]
                     })
                 
                 return records
@@ -309,7 +338,10 @@ class AssetsModel:
         # Prepare SQL query
         query = """
         UPDATE Assets
-        SET DeceasedId = ?, InstitutionId = ?, AssetType = ?, Identifier = ?, EstimatedValue = ?
+        SET DeceasedId = ?, InstitutionId = ?, AssetType = ?, Identifier = ?, EstimatedValue = ?,
+            AccountStatus = ?, AccountOpeningDate = ?, LastTransactionDate = ?, InterestRate = ?,
+            MaturityDate = ?, BeneficiaryInfo = ?, AccountHolderName = ?, BranchLocation = ?,
+            Currency = ?, Documentation = ?, Notes = ?
         WHERE AssetId = ?
         """
         
@@ -320,6 +352,17 @@ class AssetsModel:
             data['AssetType'],
             data.get('Identifier'),
             data.get('EstimatedValue'),
+            data.get('AccountStatus'),
+            data.get('AccountOpeningDate'),
+            data.get('LastTransactionDate'),
+            data.get('InterestRate'),
+            data.get('MaturityDate'),
+            data.get('BeneficiaryInfo'),
+            data.get('AccountHolderName'),
+            data.get('BranchLocation'),
+            data.get('Currency', 'USD'),
+            data.get('Documentation'),
+            data.get('Notes'),
             asset_id
         )
         

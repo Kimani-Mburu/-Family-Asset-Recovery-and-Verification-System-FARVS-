@@ -18,11 +18,12 @@ from typing import Optional, List, Dict, Any
 import datetime
 import csv
 
-# Import database models (will be implemented)
-# from db.models_deceased import DeceasedModel
-# from db.models_assets import AssetsModel
-# from db.models_claims import ClaimsModel
-# from db.models_claimants import ClaimantsModel
+# Import database models
+from db.models_deceased import DeceasedModel
+from db.models_assets import AssetsModel
+from db.models_claims import ClaimsModel
+from db.models_claimants import ClaimantsModel
+from db.models_institutions import InstitutionsModel
 
 
 class ReportsWindow:
@@ -38,27 +39,33 @@ class ReportsWindow:
     - Date range filtering
     """
     
-    def __init__(self, parent: tk.Tk):
+    def __init__(self, parent: tk.Tk, container: Optional[ttk.Frame] = None):
         """
         Initialize the reports and analytics window.
         
         Args:
             parent: Parent Tkinter window
+            container: Optional container frame (if provided, use instead of Toplevel)
         """
         self.parent = parent
-        self.window = tk.Toplevel(parent)
-        self.window.title("Reports & Analytics")
-        self.window.geometry("1200x800")
-        self.window.minsize(1000, 700)
+        # Use provided container or create Toplevel
+        if container:
+            self.window = container
+        else:
+            self.window = tk.Toplevel(parent)
+            self.window.title("Reports & Analytics")
+            self.window.geometry("1200x800")
+            self.window.minsize(1000, 700)
         
         # Data storage
         self.report_data: Dict[str, Any] = {}
         
-        # Initialize database models (placeholder)
-        # self.deceased_model = DeceasedModel()
-        # self.assets_model = AssetsModel()
-        # self.claims_model = ClaimsModel()
-        # self.claimants_model = ClaimantsModel()
+        # Initialize database models
+        self.deceased_model = DeceasedModel()
+        self.assets_model = AssetsModel()
+        self.claims_model = ClaimsModel()
+        self.claimants_model = ClaimantsModel()
+        self.institutions_model = InstitutionsModel()
         
         self._setup_ui()
         self._load_dashboard_data()
@@ -113,6 +120,10 @@ class ReportsWindow:
         # Recent activity
         activity_frame = ttk.LabelFrame(main_frame, text="Recent Activity", padding="10")
         activity_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(20, 0))
+        # CRITICAL: Configure for proper expansion
+        activity_frame.columnconfigure(0, weight=1)
+        activity_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(2, weight=1)
         
         # Activity treeview
         self._create_activity_treeview(activity_frame)
@@ -135,18 +146,15 @@ class ReportsWindow:
         controls_frame = ttk.LabelFrame(main_frame, text="Report Controls", padding="10")
         controls_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        # Date range selection
+        # Date range selection with DatePickers
+        from ui.components import DatePicker
         ttk.Label(controls_frame, text="Date Range:").grid(row=0, column=0, padx=(0, 5))
-        self.start_date_var = tk.StringVar()
-        self.end_date_var = tk.StringVar()
         
-        ttk.Label(controls_frame, text="From:").grid(row=0, column=1, padx=(10, 5))
-        start_date_entry = ttk.Entry(controls_frame, textvariable=self.start_date_var, width=12)
-        start_date_entry.grid(row=0, column=2, padx=(0, 10))
+        self.start_date_picker = DatePicker(controls_frame, "From:", required=False)
+        self.start_date_picker.grid(row=0, column=1, columnspan=2, sticky=tk.W, padx=(10, 10))
         
-        ttk.Label(controls_frame, text="To:").grid(row=0, column=3, padx=(10, 5))
-        end_date_entry = ttk.Entry(controls_frame, textvariable=self.end_date_var, width=12)
-        end_date_entry.grid(row=0, column=4, padx=(0, 10))
+        self.end_date_picker = DatePicker(controls_frame, "To:", required=False)
+        self.end_date_picker.grid(row=0, column=3, columnspan=2, sticky=tk.W, padx=(10, 10))
         
         # Report type selection
         ttk.Label(controls_frame, text="Report Type:").grid(row=1, column=0, padx=(0, 5), pady=(10, 0))
@@ -166,6 +174,10 @@ class ReportsWindow:
         # Report results
         results_frame = ttk.LabelFrame(main_frame, text="Report Results", padding="10")
         results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
+        # CRITICAL: Configure for proper expansion
+        results_frame.columnconfigure(0, weight=1)
+        results_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
         
         # Claims treeview
         self._create_claims_report_treeview(results_frame)
@@ -210,6 +222,10 @@ class ReportsWindow:
         # Report results
         results_frame = ttk.LabelFrame(main_frame, text="Asset Report Results", padding="10")
         results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
+        # CRITICAL: Configure for proper expansion
+        results_frame.columnconfigure(0, weight=1)
+        results_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
         
         # Assets treeview
         self._create_assets_report_treeview(results_frame)
@@ -231,13 +247,18 @@ class ReportsWindow:
         # Statistics labels
         self._create_statistics_labels(stats_frame)
         
-        # Charts frame (placeholder for future chart implementation)
+        # Charts frame (reserved for future chart implementation with Matplotlib)
         charts_frame = ttk.LabelFrame(main_frame, text="Charts & Visualizations", padding="10")
         charts_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Placeholder for charts
-        chart_placeholder = ttk.Label(charts_frame, text="Chart visualization will be implemented here\n(Matplotlib integration planned)")
-        chart_placeholder.grid(row=0, column=0, pady=50)
+        # Information message about chart feature
+        chart_info = ttk.Label(
+            charts_frame,
+            text="Chart visualization feature\n(Matplotlib integration planned for future release)",
+            font=("Segoe UI", 10),
+            foreground="#6B7280"
+        )
+        chart_info.grid(row=0, column=0, pady=50)
     
     def _create_metrics_cards(self, parent: ttk.Frame):
         """Create metric cards for the dashboard."""
@@ -288,13 +309,18 @@ class ReportsWindow:
             self.activity_tree.heading(col, text=col)
             self.activity_tree.column(col, width=column_widths.get(col, 100))
         
-        # Scrollbar
+        # Scrollbar - CORRECT PATTERN: command links scrollbar to treeview
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.activity_tree.yview)
+        # CORRECT PATTERN: yscrollcommand links treeview to scrollbar
         self.activity_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Grid layout
-        self.activity_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # CORRECT PATTERN: Use pack() for treeview and scrollbar (as per Tkinter best practices)
+        self.activity_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enhanced mousewheel scrolling
+        from ui.scroll_utils import configure_treeview_scrolling
+        configure_treeview_scrolling(self.activity_tree, tree_frame)
     
     def _create_claims_report_treeview(self, parent: ttk.Frame):
         """Create the claims report treeview."""
@@ -318,13 +344,18 @@ class ReportsWindow:
             self.claims_report_tree.heading(col, text=col)
             self.claims_report_tree.column(col, width=column_widths.get(col, 100))
         
-        # Scrollbar
+        # Scrollbar - CORRECT PATTERN: command links scrollbar to treeview
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.claims_report_tree.yview)
+        # CORRECT PATTERN: yscrollcommand links treeview to scrollbar
         self.claims_report_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Grid layout
-        self.claims_report_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # CORRECT PATTERN: Use pack() for treeview and scrollbar (as per Tkinter best practices)
+        self.claims_report_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enhanced mousewheel scrolling
+        from ui.scroll_utils import configure_treeview_scrolling
+        configure_treeview_scrolling(self.claims_report_tree, tree_frame)
     
     def _create_assets_report_treeview(self, parent: ttk.Frame):
         """Create the assets report treeview."""
@@ -348,13 +379,18 @@ class ReportsWindow:
             self.assets_report_tree.heading(col, text=col)
             self.assets_report_tree.column(col, width=column_widths.get(col, 100))
         
-        # Scrollbar
+        # Scrollbar - CORRECT PATTERN: command links scrollbar to treeview
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.assets_report_tree.yview)
+        # CORRECT PATTERN: yscrollcommand links treeview to scrollbar
         self.assets_report_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Grid layout
-        self.assets_report_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # CORRECT PATTERN: Use pack() for treeview and scrollbar (as per Tkinter best practices)
+        self.assets_report_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enhanced mousewheel scrolling
+        from ui.scroll_utils import configure_treeview_scrolling
+        configure_treeview_scrolling(self.assets_report_tree, tree_frame)
     
     def _create_statistics_labels(self, parent: ttk.Frame):
         """Create statistics labels."""
@@ -386,19 +422,17 @@ class ReportsWindow:
         ttk.Label(parent, text="Settled Claims:", font=("Arial", 10, "bold")).grid(row=5, column=0, sticky=tk.W, pady=2)
         self.settled_claims_label = ttk.Label(parent, text="0")
         self.settled_claims_label.grid(row=5, column=1, sticky=tk.W, pady=2)
+        
+        # Load statistics on initialization
+        self._load_statistics()
     
     def _load_dashboard_data(self):
         """Load dashboard data and update metrics."""
         try:
-            # TODO: Replace with actual database calls
-            # deceased_count = self.deceased_model.count()
-            # assets_count = self.assets_model.count()
-            # claims_count = self.claims_model.count_pending()
-            
-            # Placeholder data
-            deceased_count = 2
-            assets_count = 2
-            claims_count = 1
+            # Load statistics from database
+            deceased_count = self.deceased_model.count()
+            assets_count = self.assets_model.count()
+            claims_count = self.claims_model.count_by_status('Pending')
             
             # Update metric labels
             self.deceased_count_label.config(text=str(deceased_count))
@@ -411,6 +445,31 @@ class ReportsWindow:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load dashboard data: {e}")
     
+    def _load_statistics(self):
+        """Load and display statistics."""
+        try:
+            # Load statistics
+            total_deceased = self.deceased_model.count()
+            total_assets = self.assets_model.count()
+            total_claims = len(self.claims_model.get_all_with_details())
+            pending_claims = len(self.claims_model.get_by_status('Pending'))
+            settled_claims = len(self.claims_model.get_by_status('Settled'))
+            
+            # Calculate total asset value
+            assets = self.assets_model.get_all_with_details()
+            total_value = sum(asset.get('EstimatedValue', 0) or 0 for asset in assets)
+            
+            # Update labels
+            self.total_deceased_label.config(text=str(total_deceased))
+            self.total_assets_label.config(text=str(total_assets))
+            self.total_claims_label.config(text=str(total_claims))
+            self.pending_claims_label.config(text=str(pending_claims))
+            self.settled_claims_label.config(text=str(settled_claims))
+            self.total_value_label.config(text=f"${total_value:,.2f}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load statistics: {e}")
+    
     def _load_recent_activity(self):
         """Load recent activity data."""
         try:
@@ -418,16 +477,35 @@ class ReportsWindow:
             for item in self.activity_tree.get_children():
                 self.activity_tree.delete(item)
             
-            # TODO: Replace with actual database call
-            # activities = self.get_recent_activities()
-            
-            # Placeholder activity data
-            activities = [
-                ("2024-01-20", "New Claim Filed", "Mary Doe filed claim for Bank Account ACC-123456"),
-                ("2024-01-19", "Asset Added", "Insurance Policy POL-789012 added for Jane Smith"),
-                ("2024-01-18", "Deceased Record Added", "John Doe record created"),
-                ("2024-01-17", "Claim Verified", "Robert Smith's claim verified"),
-            ]
+            # Load recent activities from claims
+            activities = []
+            try:
+                # Get recent claims as activity
+                recent_claims = self.claims_model.get_all_with_details()[:10]
+                for claim in recent_claims:
+                    # Get filed date
+                    filed_date = claim.get('FiledAt')
+                    if filed_date:
+                        if isinstance(filed_date, datetime.datetime):
+                            activity_date = filed_date.strftime('%Y-%m-%d')
+                        else:
+                            activity_date = str(filed_date)[:10]
+                    else:
+                        activity_date = 'N/A'
+                    
+                    activity_type = f"Claim {claim.get('Status', 'Filed')}"
+                    
+                    # Get claimant name
+                    claimant_first = claim.get('ClaimantFirstName', '')
+                    claimant_last = claim.get('ClaimantLastName', '')
+                    claimant_name = f"{claimant_first} {claimant_last}".strip() or 'Unknown'
+                    # Get asset type
+                    asset_type = claim.get('AssetType', 'Asset')
+                    activity_desc = f"{claimant_name} - {asset_type}"
+                    activities.append((activity_date, activity_type, activity_desc))
+            except Exception:
+                # If audit log query fails, show empty list
+                pass
             
             # Populate treeview
             for activity in activities:
@@ -445,22 +523,57 @@ class ReportsWindow:
             
             # Get report criteria
             report_type = self.report_type_var.get()
-            start_date = self.start_date_var.get()
-            end_date = self.end_date_var.get()
+            start_date = self.start_date_picker.value.get() if hasattr(self, 'start_date_picker') else ""
+            end_date = self.end_date_picker.value.get() if hasattr(self, 'end_date_picker') else ""
             
-            # TODO: Replace with actual database call
-            # claims = self.claims_model.get_report_data(report_type, start_date, end_date)
+            # Load claims from database
+            if report_type == "All Claims":
+                claims_data = self.claims_model.get_all_with_details()
+            elif report_type == "Pending Claims":
+                claims_data = self.claims_model.get_by_status('Pending')
+            elif report_type == "Verified Claims":
+                claims_data = self.claims_model.get_by_status('Verified')
+            elif report_type == "Settled Claims":
+                claims_data = self.claims_model.get_by_status('Settled')
+            else:
+                claims_data = self.claims_model.get_all_with_details()
             
-            # Placeholder claims data
-            claims = [
-                (1, "Bank Account - ACC-123456 (John Doe)", "Mary Doe", "Pending", "2024-01-15", "$50,000.00"),
-                (2, "Insurance Policy - POL-789012 (Jane Smith)", "Robert Smith", "Verified", "2024-01-10", "$100,000.00"),
-            ]
-            
-            # Filter by report type
-            if report_type != "All Claims":
-                status_filter = report_type.replace(" Claims", "")
-                claims = [c for c in claims if c[3] == status_filter]
+            # Format claims data for display
+            claims = []
+            for claim in claims_data:
+                # Get asset type and identifier
+                asset_type = claim.get('AssetType', 'Unknown')
+                asset_identifier = claim.get('Identifier', 'N/A')
+                # Get deceased name
+                deceased_first = claim.get('DeceasedFirstName', '')
+                deceased_last = claim.get('DeceasedLastName', '')
+                deceased_name = f"{deceased_first} {deceased_last}".strip() or 'Unknown'
+                # Build asset description
+                asset_desc = f"{asset_type} - {asset_identifier} ({deceased_name})"
+                # Get filed date
+                filed_date = claim.get('FiledAt', datetime.datetime.now())
+                if isinstance(filed_date, datetime.datetime):
+                    filed_date = filed_date.strftime('%Y-%m-%d')
+                elif filed_date:
+                    filed_date = str(filed_date)[:10]
+                else:
+                    filed_date = 'N/A'
+                # Get value
+                value = claim.get('EstimatedValue', 0)
+                value_str = f"${value:,.2f}" if value else "$0.00"
+                # Get claimant name
+                claimant_first = claim.get('ClaimantFirstName', '')
+                claimant_last = claim.get('ClaimantLastName', '')
+                claimant_name = f"{claimant_first} {claimant_last}".strip() or 'Unknown'
+                
+                claims.append((
+                    claim.get('ClaimId', 0),
+                    asset_desc,
+                    claimant_name,
+                    claim.get('Status', 'Unknown'),
+                    filed_date,
+                    value_str
+                ))
             
             # Populate treeview
             for claim in claims:
@@ -480,21 +593,37 @@ class ReportsWindow:
             asset_type = self.asset_type_filter_var.get()
             institution = self.institution_filter_var.get()
             
-            # TODO: Replace with actual database call
-            # assets = self.assets_model.get_report_data(asset_type, institution)
+            # Load assets from database
+            if asset_type == "All Types" and institution == "All Institutions":
+                assets_data = self.assets_model.get_all_with_details()
+            elif asset_type != "All Types":
+                assets_data = self.assets_model.get_by_type(asset_type)
+            else:
+                assets_data = self.assets_model.get_all_with_details()
             
-            # Placeholder assets data
-            assets = [
-                (1, "John Doe", "Bank Account", "National Bank", "ACC-123456", "$50,000.00", 1),
-                (2, "Jane Smith", "Insurance Policy", "State Insurance", "POL-789012", "$100,000.00", 1),
-            ]
+            # Format assets data for display
+            assets = []
+            for asset in assets_data:
+                # Format asset value
+                value = f"${asset.get('EstimatedValue', 0):,.2f}" if asset.get('EstimatedValue') else "$0.00"
+                # Count claims for this asset (simplified - in production use proper join)
+                claim_count = 0  # Could be enhanced with proper query
+                
+                assets.append((
+                    asset.get('AssetId', 0),
+                    asset.get('DeceasedName', 'Unknown'),
+                    asset.get('AssetType', 'Unknown'),
+                    asset.get('InstitutionName', 'Unknown'),
+                    asset.get('Identifier', 'N/A'),
+                    value,
+                    claim_count
+                ))
             
-            # Filter by criteria
-            if asset_type != "All":
-                assets = [a for a in assets if a[2] == asset_type]
-            
-            if institution != "All":
-                assets = [a for a in assets if a[3] == institution]
+            # Filter by institution if specified
+            if institution != "All Institutions":
+                # Extract institution name from filter
+                inst_name = institution.split(' (')[0] if ' (' in institution else institution
+                assets = [a for a in assets if a[3] == inst_name]
             
             # Populate treeview
             for asset in assets:

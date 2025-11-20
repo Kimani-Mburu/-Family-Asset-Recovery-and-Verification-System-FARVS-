@@ -60,18 +60,31 @@ class ClaimantsModel:
         
         # Prepare SQL query
         query = """
-        INSERT INTO Claimants (NationalId, FirstName, LastName, Relationship, Contact)
+        INSERT INTO Claimants (NationalId, FirstName, MiddleName, LastName, DateOfBirth, Gender,
+            Relationship, Contact, Email, Phone, Address, Occupation, MaritalStatus,
+            AlternateContact, RelationshipProof, Notes)
         OUTPUT INSERTED.ClaimantId
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
         # Prepare parameters
         params = (
             data.get('NationalId'),
             data['FirstName'],
+            data.get('MiddleName'),
             data['LastName'],
+            data.get('DateOfBirth'),
+            data.get('Gender'),
             data.get('Relationship'),
-            data.get('Contact')
+            data.get('Contact'),
+            data.get('Email'),
+            data.get('Phone'),
+            data.get('Address'),
+            data.get('Occupation'),
+            data.get('MaritalStatus'),
+            data.get('AlternateContact'),
+            data.get('RelationshipProof'),
+            data.get('Notes')
         )
         
         try:
@@ -98,7 +111,9 @@ class ClaimantsModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT ClaimantId, NationalId, FirstName, LastName, Relationship, Contact
+        SELECT ClaimantId, NationalId, FirstName, MiddleName, LastName, DateOfBirth, Gender,
+            Relationship, Contact, Email, Phone, Address, Occupation, MaritalStatus,
+            AlternateContact, RelationshipProof, Notes, CreatedAt
         FROM Claimants
         WHERE ClaimantId = ?
         """
@@ -114,9 +129,21 @@ class ClaimantsModel:
                         'ClaimantId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'Relationship': row[4],
-                        'Contact': row[5]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'DateOfBirth': row[5],
+                        'Gender': row[6],
+                        'Relationship': row[7],
+                        'Contact': row[8],
+                        'Email': row[9],
+                        'Phone': row[10],
+                        'Address': row[11],
+                        'Occupation': row[12],
+                        'MaritalStatus': row[13],
+                        'AlternateContact': row[14],
+                        'RelationshipProof': row[15],
+                        'Notes': row[16],
+                        'CreatedAt': row[17]
                     }
                 return None
                 
@@ -134,7 +161,9 @@ class ClaimantsModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT ClaimantId, NationalId, FirstName, LastName, Relationship, Contact
+        SELECT ClaimantId, NationalId, FirstName, MiddleName, LastName, DateOfBirth, Gender,
+            Relationship, Contact, Email, Phone, Address, Occupation, MaritalStatus,
+            AlternateContact, RelationshipProof, Notes, CreatedAt
         FROM Claimants
         ORDER BY LastName, FirstName
         """
@@ -151,9 +180,21 @@ class ClaimantsModel:
                         'ClaimantId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'Relationship': row[4],
-                        'Contact': row[5]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'DateOfBirth': row[5],
+                        'Gender': row[6],
+                        'Relationship': row[7],
+                        'Contact': row[8],
+                        'Email': row[9],
+                        'Phone': row[10],
+                        'Address': row[11],
+                        'Occupation': row[12],
+                        'MaritalStatus': row[13],
+                        'AlternateContact': row[14],
+                        'RelationshipProof': row[15],
+                        'Notes': row[16],
+                        'CreatedAt': row[17]
                     })
                 
                 return records
@@ -175,9 +216,11 @@ class ClaimantsModel:
             pyodbc.Error: If database operation fails
         """
         query = """
-        SELECT ClaimantId, NationalId, FirstName, LastName, Relationship, Contact
+        SELECT ClaimantId, NationalId, FirstName, MiddleName, LastName, DateOfBirth, Gender,
+            Relationship, Contact, Email, Phone, Address, Occupation, MaritalStatus,
+            AlternateContact, RelationshipProof, Notes, CreatedAt
         FROM Claimants
-        WHERE FirstName LIKE ? OR LastName LIKE ? OR NationalId LIKE ?
+        WHERE FirstName LIKE ? OR LastName LIKE ? OR NationalId LIKE ? OR MiddleName LIKE ? OR Email LIKE ?
         ORDER BY LastName, FirstName
         """
         
@@ -186,7 +229,7 @@ class ClaimantsModel:
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(query, (search_pattern, search_pattern, search_pattern))
+                cursor.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern, search_pattern))
                 rows = cursor.fetchall()
                 
                 records = []
@@ -195,9 +238,21 @@ class ClaimantsModel:
                         'ClaimantId': row[0],
                         'NationalId': row[1],
                         'FirstName': row[2],
-                        'LastName': row[3],
-                        'Relationship': row[4],
-                        'Contact': row[5]
+                        'MiddleName': row[3],
+                        'LastName': row[4],
+                        'DateOfBirth': row[5],
+                        'Gender': row[6],
+                        'Relationship': row[7],
+                        'Contact': row[8],
+                        'Email': row[9],
+                        'Phone': row[10],
+                        'Address': row[11],
+                        'Occupation': row[12],
+                        'MaritalStatus': row[13],
+                        'AlternateContact': row[14],
+                        'RelationshipProof': row[15],
+                        'Notes': row[16],
+                        'CreatedAt': row[17]
                     })
                 
                 return records
@@ -229,7 +284,9 @@ class ClaimantsModel:
         # Prepare SQL query
         query = """
         UPDATE Claimants
-        SET NationalId = ?, FirstName = ?, LastName = ?, Relationship = ?, Contact = ?
+        SET NationalId = ?, FirstName = ?, MiddleName = ?, LastName = ?, DateOfBirth = ?, Gender = ?,
+            Relationship = ?, Contact = ?, Email = ?, Phone = ?, Address = ?, Occupation = ?,
+            MaritalStatus = ?, AlternateContact = ?, RelationshipProof = ?, Notes = ?
         WHERE ClaimantId = ?
         """
         
@@ -237,9 +294,20 @@ class ClaimantsModel:
         params = (
             data.get('NationalId'),
             data['FirstName'],
+            data.get('MiddleName'),
             data['LastName'],
+            data.get('DateOfBirth'),
+            data.get('Gender'),
             data.get('Relationship'),
             data.get('Contact'),
+            data.get('Email'),
+            data.get('Phone'),
+            data.get('Address'),
+            data.get('Occupation'),
+            data.get('MaritalStatus'),
+            data.get('AlternateContact'),
+            data.get('RelationshipProof'),
+            data.get('Notes'),
             claimant_id
         )
         
