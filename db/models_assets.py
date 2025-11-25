@@ -62,11 +62,11 @@ class AssetsModel:
             raise ValueError("AssetType is required")
         
         # Prepare SQL query
+        # Note: Cannot use OUTPUT clause with triggers, so we use SCOPE_IDENTITY() instead
         query = """
         INSERT INTO Assets (DeceasedId, InstitutionId, AssetType, Identifier, EstimatedValue,
             AccountStatus, AccountOpeningDate, LastTransactionDate, InterestRate, MaturityDate,
             BeneficiaryInfo, AccountHolderName, BranchLocation, Currency, Documentation, Notes)
-        OUTPUT INSERTED.AssetId
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
@@ -94,8 +94,11 @@ class AssetsModel:
             with get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
+                conn.commit()
+                # Use SCOPE_IDENTITY() instead of OUTPUT clause (works with triggers)
+                cursor.execute("SELECT SCOPE_IDENTITY()")
                 result = cursor.fetchone()
-                return result[0] if result else 0
+                return int(result[0]) if result and result[0] else 0
                 
         except pyodbc.Error as e:
             raise pyodbc.Error(f"Failed to create asset record: {e}")

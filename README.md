@@ -25,16 +25,13 @@ A comprehensive database system that enables families to trace, verify, and clai
 ## ✨ Features
 
 - **Complete CRUD Operations**: Full Create, Read, Update, Delete functionality for all entities
-- **Database-Centric Architecture**: All business logic in stored procedures, triggers, and views
+- **Database-Centric Architecture**: All business logic in 25 stored procedures, 3 triggers, and 5 views
 - **Normalized Database Design**: Third Normal Form (3NF) with proper relationships
 - **Transaction Management**: ACID-compliant transactions with savepoints for partial rollbacks
-- **Advanced Database Components**: 22+ stored procedures, 5 triggers, 5 views
-- **Role-Based Access Control**: Admin, Staff, and Viewer roles with database-level authentication
-- **SQL Server Login Integration**: Automatic SQL Server login creation with role-based permissions
-- **Onboarding System**: First-time setup with automatic admin account creation
-- **Asset Normalization**: Type-specific asset detail tables (Bank Account, Vehicle, Real Estate, Investment, Insurance)
+- **Advanced Database Components**: 25 stored procedures, 3 triggers, 5 views
+- **Role-Based Access Control**: Admin, Staff, and Viewer roles with proper security
 - **Audit Logging**: Comprehensive tracking of all user actions
-- **Modern UI**: Professional blue and white themed interface with scrollable forms and card/table views
+- **Modern UI**: Professional blue and white themed interface with card and table views
 - **Data Validation**: Input validation at both application and database levels
 - **Secure Authentication**: SHA-256 password hashing with salt
 
@@ -77,16 +74,16 @@ A comprehensive database system that enables families to trace, verify, and clai
 
 ### Step 1: Clone the Repository
 
-   ```bash
+```bash
 git clone https://github.com/Kimani-Mburu/-Family-Asset-Recovery-and-Verification-System-FARVS-.git
 cd -Family-Asset-Recovery-and-Verification-System-FARVS-
-   ```
+```
 
 ### Step 2: Install Python Dependencies
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
 ### Step 3: Set Up the Database
 
@@ -95,11 +92,11 @@ cd -Family-Asset-Recovery-and-Verification-System-FARVS-
 3. Open and execute `db/farvs_db.sql`
 4. The script will create:
    - FARVS database
-   - 12 tables with relationships
-   - 7 stored procedures
-   - 5 triggers
+   - 19 tables with relationships (normalized 3NF)
+   - 25 stored procedures
+   - 3 triggers
    - 5 views
-   - Indexes and constraints
+   - 30+ indexes and 20+ constraints
    - Sample data (optional)
 
 ### Step 4: Configure Environment
@@ -127,13 +124,29 @@ DEBUG=false
 
 ### Step 5: Seed Database (Optional)
 
+**Basic Seeding:**
 ```bash
 python db/seed_data.py
 ```
 
-This creates sample users:
+**Comprehensive Seeding (Recommended):**
+```bash
+python db/seed_comprehensive_data.py
+```
+
+This creates sample data including:
+- **Users**: Admin, Staff, and Viewer accounts
+- **Institutions**: Banks, Insurance, Investment companies
+- **Deceased Records**: 10+ diverse scenarios
+- **Assets**: Various types (Bank, Insurance, Investment, Real Estate, Vehicles)
+- **Claimants**: Different relationships and scenarios
+- **Claims**: Various statuses (Pending, Verified, Settled, Rejected)
+
+**Default Login Credentials:**
 - **Admin**: `admin` / `admin123`
-- **Staff**: `staff` / `staff123`
+- **Staff 1**: `staff1` / `staff123`
+- **Staff 2**: `staff2` / `staff123`
+- **Viewer**: `viewer1` / `viewer123`
 
 ### Step 6: Run the Application
 
@@ -186,21 +199,13 @@ DB_PASSWORD=YourPassword123
 python main.py
 ```
 
-### First-Time Setup (Onboarding)
-
-On first launch, the application will show both "Sign In" and "Create Account" buttons:
-
-1. Click **"Create Account"** to create the first administrator account
-2. The first account automatically receives **Admin** privileges
-3. After creation, you'll be automatically logged in
-4. Subsequent launches will only show "Sign In" - only admins can create new users
-
 ### Default Login Credentials
 
-After seeding the database (if using seed script):
+After comprehensive seeding:
 
 - **Admin User**: `admin` / `admin123`
-- **Staff User**: `staff` / `staff123`
+- **Staff Users**: `staff1` / `staff123`, `staff2` / `staff123`
+- **Viewer User**: `viewer1` / `viewer123`
 
 ### Main Features
 
@@ -267,41 +272,61 @@ The database follows **Third Normal Form (3NF)**:
 
 | Component | Count | Purpose |
 |-----------|-------|---------|
-| **Tables** | 17 | Core data storage (normalized 3NF with asset detail tables) |
-| **Stored Procedures** | 22+ | Business logic, validation, transactions, user management |
-| **Triggers** | 5 | Automatic actions, audit logging |
+| **Tables** | 19 | Core data storage (normalized 3NF) |
+| **Stored Procedures** | 25 | Business logic, validation, transactions |
+| **Triggers** | 3 | Automatic actions, audit logging |
 | **Views** | 5 | Simplified queries, reporting |
-| **Indexes** | 20+ | Performance optimization |
-| **Constraints** | 15+ | Data integrity (PKs, FKs, checks) |
+| **Indexes** | 30+ | Performance optimization |
+| **Constraints** | 20+ | Data integrity (PKs, FKs, checks) |
 
-### Stored Procedures
+### Entity Relationship Diagram
 
-**Deceased Operations:**
-- SP_CreateDeceasedWithValidation, SP_UpdateDeceasedRecord, SP_DeleteDeceasedRecord, SP_GetDeceasedWithAssets
+A complete ER diagram is available in the root folder:
+- **File**: `FARVS_ER_Diagram.drawio`
+- **Format**: Draw.io XML with Crow's Foot notation
+- **Features**: All 19 tables with relationships, primary keys, and foreign keys
+- **Usage**: Open in [draw.io](https://app.diagrams.net/) to view and edit
 
-**Asset Operations:**
-- SP_CreateAssetWithValidation, SP_UpdateAssetRecord, SP_DeleteAssetRecord, SP_GetAssetsByDeceased
+### Key Stored Procedures
 
-**Claimant Operations:**
-- SP_CreateClaimantWithValidation, SP_UpdateClaimantRecord, SP_DeleteClaimantRecord
+The database includes 25 stored procedures for comprehensive operations:
 
-**Claim Operations:**
-- SP_CreateClaimWithValidation, SP_UpdateClaimStatus, SP_GetPendingClaims
+**Deceased Management:**
+- `SP_CreateDeceasedWithValidation` - Create deceased record with validation
+- `SP_UpdateDeceasedRecord` - Update deceased record
+- `SP_DeleteDeceasedRecord` - Delete deceased record
+- `SP_GetDeceasedWithAssets` - Get deceased with asset details
 
-**Institution Operations:**
-- SP_CreateInstitution, SP_UpdateInstitution, SP_DeleteInstitution
+**Asset Management:**
+- `SP_CreateAssetWithValidation` - Create asset with validation
+- `SP_UpdateAssetRecord` - Update asset record
+- `SP_DeleteAssetRecord` - Delete asset record
+- `SP_GetAssetsByDeceased` - Get assets by deceased ID
+- `SP_BatchCreateAssets` - Create multiple assets with savepoints
+
+**Claims Management:**
+- `SP_CreateClaimWithValidation` - Create claim with validation
+- `SP_UpdateClaimStatus` - Update claim status with timestamps
+- `SP_GetPendingClaims` - Retrieve pending claims
 
 **User Management:**
-- SP_CreateUserByAdmin, SP_UpdateUserByAdmin, SP_DeleteUserByAdmin, SP_GetAllUsers
-- SP_CreateSQLServerLogin, SP_UpdateSQLServerLoginPermissions, SP_DropSQLServerLogin
+- `SP_CreateUserByAdmin` - Create user (admin-only)
+- `SP_UpdateUserByAdmin` - Update user (admin-only)
+- `SP_DeleteUserByAdmin` - Delete user (admin-only)
+- `SP_GetAllUsers` - Get all users
+
+**Institution Management:**
+- `SP_CreateInstitution` - Create institution
+- `SP_UpdateInstitution` - Update institution
+- `SP_DeleteInstitution` - Delete institution
+
+*See `db/farvs_db.sql` for complete list of all stored procedures.*
 
 ### Triggers
 
 1. **TR_Claims_StatusChange** - Auto-update timestamps on status change
-2. **TR_Assets_AfterInsert** - Auto-log asset creation
-3. **TR_Deceased_AfterUpdate** - Auto-log deceased updates
-4. **TR_Claims_PreventInvalidStatus** - Prevent invalid status transitions
-5. **TR_Claims_AutoCloseCase** - Auto-close case when all claims settled
+2. **TR_Assets_AfterInsert** - Auto-log asset creation and audit trail
+3. **TR_Deceased_AfterUpdate** - Auto-log deceased updates and audit trail
 
 ### Views
 
@@ -335,11 +360,8 @@ The database implements ACID-compliant transactions with savepoints for partial 
 
 ✅ **Access Control**
 - Role-based access control (Admin, Staff, Viewer)
-- Database-level SQL Server login integration
-- Automatic SQL Server login creation with role-based permissions
 - Admin-only user creation (UI + Database level)
 - Database-level role validation
-- First-time onboarding with automatic admin assignment
 
 ✅ **Data Integrity**
 - Primary keys on all tables
@@ -378,8 +400,10 @@ FARVS/
 │   ├── farvs_db.sql       # Complete database schema (ALL SQL)
 │   ├── db_connect.py      # Connection utilities
 │   ├── db_operations.py   # Database operations (stored procedure calls)
-│   ├── models_*.py        # Database models (legacy, being phased out)
-│   └── seed_data.py       # Database seeding
+│   ├── models_*.py        # Database models (CRUD operations)
+│   ├── models_base.py     # Base model class for code reuse
+│   ├── seed_data.py       # Basic database seeding
+│   └── seed_comprehensive_data.py  # Comprehensive database seeding
 │
 ├── ui/                      # User interface layer
 │   ├── theme.py           # Blue & white theme
@@ -567,8 +591,27 @@ This is a Database Systems Group Project demonstrating:
 ## 📚 Additional Resources
 
 - **Database Schema**: See `db/farvs_db.sql` for complete database structure
+- **ER Diagram**: Open `FARVS_ER_Diagram.drawio` in [draw.io](https://app.diagrams.net/) to visualize database relationships
 - **API Documentation**: All stored procedures are documented in `farvs_db.sql`
 - **Code Documentation**: All Python modules include comprehensive docstrings
+
+## 📊 Database Schema Visualization
+
+The project includes a complete Entity Relationship Diagram (ERD) in Crow's Foot notation:
+
+- **Location**: `FARVS_ER_Diagram.drawio` (root folder)
+- **Format**: Draw.io XML format
+- **Features**:
+  - All 19 tables with complete column definitions
+  - Primary keys and foreign keys clearly marked
+  - Relationships with cardinality (1:1, 1:M)
+  - Color-coded by table type
+  - Ready to open and edit in draw.io
+
+To view the ERD:
+1. Go to [draw.io](https://app.diagrams.net/)
+2. Click "Open Existing Diagram"
+3. Select `FARVS_ER_Diagram.drawio`
 
 ---
 

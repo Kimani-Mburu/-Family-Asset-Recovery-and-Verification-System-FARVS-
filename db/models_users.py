@@ -145,5 +145,23 @@ class UsersModel:
                 }
                 for r in rows
             ]
+    
+    def count(self) -> int:
+        """
+        Get the total count of users in the system.
+        
+        Returns:
+            int: Total number of users
+        
+        Raises:
+            pyodbc.Error: If database operation fails
+        """
+        query = "SELECT COUNT(*) FROM Users"
+        
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(query)
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
 
 
