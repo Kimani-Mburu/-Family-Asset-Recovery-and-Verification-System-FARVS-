@@ -3,3 +3,4 @@
 
 pyodbc>=4.0.39
 python-dotenv>=1.0.0
+python-docx>=0.8.11

@@ -5,11 +5,10 @@
 -- This script demonstrates:
 -- 1. Database Normalization (1NF, 2NF, 3NF)
 -- 2. Transactions (ACID properties)
--- 3. Stored Procedures
--- 4. Views
--- 5. Triggers
+-- 3. Stored Procedures (25 procedures)
+-- 4. Views (2 views - only used views)
+-- 5. Triggers (5 triggers)
 -- 6. Indexes and Constraints
--- 7. Sample Data with Transactions
 -- ============================================================================
 
 -- ============================================================================
@@ -59,18 +58,17 @@ NORMALIZATION BENEFITS:
 -- SECTION 3: DROP EXISTING OBJECTS (in reverse dependency order)
 -- ============================================================================
 
--- Drop triggers first
-IF OBJECT_ID('dbo.TR_Claims_StatusChange', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Claims_StatusChange;
-IF OBJECT_ID('dbo.TR_Assets_AfterInsert', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Assets_AfterInsert;
+-- Drop triggers first (in reverse dependency order)
 IF OBJECT_ID('dbo.TR_Deceased_AfterUpdate', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Deceased_AfterUpdate;
+IF OBJECT_ID('dbo.TR_Assets_AfterInsert', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Assets_AfterInsert;
+IF OBJECT_ID('dbo.TR_Claims_AutoCloseCase', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Claims_AutoCloseCase;
+IF OBJECT_ID('dbo.TR_Claims_PreventInvalidStatus', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Claims_PreventInvalidStatus;
+IF OBJECT_ID('dbo.TR_Claims_StatusChange', 'TR') IS NOT NULL DROP TRIGGER dbo.TR_Claims_StatusChange;
 GO
 
--- Drop views
-IF OBJECT_ID('dbo.VW_Claims_Detailed', 'V') IS NOT NULL DROP VIEW dbo.VW_Claims_Detailed;
+-- Drop views (only used views - unused views removed)
 IF OBJECT_ID('dbo.VW_Assets_Summary', 'V') IS NOT NULL DROP VIEW dbo.VW_Assets_Summary;
-IF OBJECT_ID('dbo.VW_Deceased_WithAssets', 'V') IS NOT NULL DROP VIEW dbo.VW_Deceased_WithAssets;
-IF OBJECT_ID('dbo.VW_Claimants_WithClaims', 'V') IS NOT NULL DROP VIEW dbo.VW_Claimants_WithClaims;
-IF OBJECT_ID('dbo.VW_System_Statistics', 'V') IS NOT NULL DROP VIEW dbo.VW_System_Statistics;
+IF OBJECT_ID('dbo.VW_Claims_Detailed', 'V') IS NOT NULL DROP VIEW dbo.VW_Claims_Detailed;
 GO
 
 -- Drop stored procedures (in reverse dependency order)
@@ -533,67 +531,6 @@ INNER JOIN dbo.Institutions i ON a.InstitutionId = i.InstitutionId
 LEFT JOIN dbo.Claims cl ON a.AssetId = cl.AssetId
 GROUP BY a.AssetId, a.AssetType, a.Identifier, a.EstimatedValue, a.CreatedAt,
          d.DeceasedId, d.FirstName, d.LastName, i.Name, i.Type;
-GO
-
--- View: Deceased with Assets Count
-CREATE VIEW dbo.VW_Deceased_WithAssets
-AS
-SELECT 
-    d.DeceasedId,
-    d.NationalId,
-    d.FirstName,
-    d.LastName,
-    d.FirstName + ' ' + d.LastName AS FullName,
-    d.DateOfBirth,
-    d.DateOfDeath,
-    d.CreatedAt,
-    COUNT(a.AssetId) AS AssetCount,
-    SUM(a.EstimatedValue) AS TotalAssetValue,
-    COUNT(cl.ClaimId) AS ClaimCount
-FROM dbo.Deceased d
-LEFT JOIN dbo.Assets a ON d.DeceasedId = a.DeceasedId
-LEFT JOIN dbo.Claims cl ON a.AssetId = cl.AssetId
-GROUP BY d.DeceasedId, d.NationalId, d.FirstName, d.LastName, 
-         d.DateOfBirth, d.DateOfDeath, d.CreatedAt;
-GO
-
--- View: Claimants with Claims Count
-CREATE VIEW dbo.VW_Claimants_WithClaims
-AS
-SELECT 
-    cl.ClaimantId,
-    cl.NationalId,
-    cl.FirstName,
-    cl.LastName,
-    cl.FirstName + ' ' + cl.LastName AS FullName,
-    cl.Relationship,
-    cl.Contact,
-    cl.Email,
-    cl.CreatedAt,
-    COUNT(c.ClaimId) AS TotalClaims,
-    SUM(CASE WHEN c.Status = 'Pending' THEN 1 ELSE 0 END) AS PendingClaims,
-    SUM(CASE WHEN c.Status = 'Settled' THEN 1 ELSE 0 END) AS SettledClaims
-FROM dbo.Claimants cl
-LEFT JOIN dbo.Claims c ON cl.ClaimantId = c.ClaimantId
-GROUP BY cl.ClaimantId, cl.NationalId, cl.FirstName, cl.LastName, 
-         cl.Relationship, cl.Contact, cl.Email, cl.CreatedAt;
-GO
-
--- View: System Statistics
-CREATE VIEW dbo.VW_System_Statistics
-AS
-SELECT 
-    (SELECT COUNT(*) FROM dbo.Deceased) AS TotalDeceased,
-    (SELECT COUNT(*) FROM dbo.Assets) AS TotalAssets,
-    (SELECT COUNT(*) FROM dbo.Claims) AS TotalClaims,
-    (SELECT COUNT(*) FROM dbo.Claims WHERE Status = 'Pending') AS PendingClaims,
-    (SELECT COUNT(*) FROM dbo.Claims WHERE Status = 'Settled') AS SettledClaims,
-    (SELECT COUNT(*) FROM dbo.Claimants) AS TotalClaimants,
-    (SELECT COUNT(*) FROM dbo.Institutions) AS TotalInstitutions,
-    (SELECT SUM(EstimatedValue) FROM dbo.Assets WHERE EstimatedValue IS NOT NULL) AS TotalAssetValue,
-    (SELECT SUM(EstimatedValue) FROM dbo.Assets a 
-     INNER JOIN dbo.Claims c ON a.AssetId = c.AssetId 
-     WHERE c.Status = 'Settled' AND a.EstimatedValue IS NOT NULL) AS SettledAssetValue;
 GO
 
 -- ============================================================================
@@ -3131,50 +3068,18 @@ END;
 GO
 
 -- ============================================================================
-
--- Query 2: Demonstrate transaction usage - Update claim status
-/*
-DECLARE @ClaimId INT = 1;
-DECLARE @NewStatus NVARCHAR(50) = 'Verified';
-DECLARE @UserId INT = 1;
-DECLARE @Success BIT;
-DECLARE @ErrorMessage NVARCHAR(500);
-
-EXEC dbo.SP_UpdateClaimStatus 
-    @ClaimId = @ClaimId,
-    @NewStatus = @NewStatus,
-    @UserId = @UserId,
-    @Success = @Success OUTPUT,
-    @ErrorMessage = @ErrorMessage OUTPUT;
-
-SELECT @Success AS Success, @ErrorMessage AS ErrorMessage;
-*/
-
--- Query 3: Use view for simplified reporting
-/*
-SELECT * FROM dbo.VW_System_Statistics;
-*/
-
--- Query 4: Demonstrate stored procedure with transaction
-/*
-DECLARE @AssetId INT = 1;
-DECLARE @ClaimantId INT = 1;
-DECLARE @ClaimId INT;
-DECLARE @ErrorMessage NVARCHAR(500);
-
-EXEC dbo.SP_CreateClaimWithValidation
-    @AssetId = @AssetId,
-    @ClaimantId = @ClaimantId,
-    @UserId = 1,
-    @ClaimId = @ClaimId OUTPUT,
-    @ErrorMessage = @ErrorMessage OUTPUT;
-
-SELECT @ClaimId AS NewClaimId, @ErrorMessage AS ErrorMessage;
-*/
-
--- ============================================================================
--- END OF SCRIPT
+-- VERIFICATION: Database Components Summary
 -- ============================================================================
 PRINT 'FARVS Database Schema created successfully!';
-PRINT 'All database components (tables, views, stored procedures, triggers, transactions) are ready.';
+PRINT '';
+PRINT 'Database Components Created:';
+PRINT '  - Tables: 19 (Core: 6, Detail: 5, Supporting: 8)';
+PRINT '  - Stored Procedures: 25';
+PRINT '  - Views: 2 (VW_Claims_Detailed, VW_Assets_Summary)';
+PRINT '  - Triggers: 5';
+PRINT '  - Indexes: 30+';
+PRINT '  - Constraints: 20+';
+PRINT '';
+PRINT 'This database script is STANDALONE and can run independently.';
+PRINT 'No Python dependencies required.';
 GO
